@@ -5,9 +5,9 @@ services:
     volumes:
       - $$cap_appname-db-data:/var/lib/postgresql/data
     environment:
-      POSTGRES_USER: $$cap_postgres_user
+      POSTGRES_USER: openpartner
       POSTGRES_PASSWORD: $$cap_postgres_password
-      POSTGRES_DB: $$cap_postgres_db
+      POSTGRES_DB: openpartner
     caproverExtra:
       notExposeAsWebApp: true
 
@@ -19,18 +19,17 @@ services:
       NODE_ENV: production
       OPENPARTNER_MODE: selfhost
       OPENPARTNER_TENANCY: single
-      DATABASE_URL: postgres://$$cap_postgres_user:$$cap_postgres_password@srv-captain--$$cap_appname-db:5432/$$cap_postgres_db
+      DATABASE_URL: postgres://openpartner:$$cap_postgres_password@srv-captain--$$cap_appname-db:5432/openpartner
       API_PORT: '4601'
       ADMIN_API_KEY: $$cap_admin_api_key
       SECRETS_ENCRYPTION_KEY: $$cap_secrets_encryption_key
       PORTAL_URL: https://$$cap_portal_domain
-      COOKIE_DOMAIN: .$$cap_cookie_domain
       MAIL_FROM: $$cap_mail_from
-      SMTP_HOST: $$cap_smtp_host
-      SMTP_PORT: $$cap_smtp_port
-      SMTP_SECURE: $$cap_smtp_secure
-      SMTP_USER: $$cap_smtp_user
-      SMTP_PASSWORD: $$cap_smtp_password
+      SMTP_HOST: smtp.resend.com
+      SMTP_PORT: '465'
+      SMTP_SECURE: '1'
+      SMTP_USER: resend
+      SMTP_PASSWORD: $$cap_resend_api_key
       METRICS_TOKEN: $$cap_metrics_token
     caproverExtra:
       containerHttpPort: '4601'
@@ -43,7 +42,7 @@ services:
       NODE_ENV: production
       OPENPARTNER_MODE: selfhost
       OPENPARTNER_TENANCY: single
-      DATABASE_URL: postgres://$$cap_postgres_user:$$cap_postgres_password@srv-captain--$$cap_appname-db:5432/$$cap_postgres_db
+      DATABASE_URL: postgres://openpartner:$$cap_postgres_password@srv-captain--$$cap_appname-db:5432/openpartner
       ROUTER_PORT: '4701'
       COOKIE_DOMAIN: .$$cap_cookie_domain
       VELOCITY_MAX: '20'
@@ -62,63 +61,55 @@ services:
 
 caproverOneClickApp:
   variables:
-    - id: $$cap_postgres_user
-      label: PostgreSQL user
-      defaultValue: openpartner
-      validRegex: /^[a-zA-Z0-9_]+$/
     - id: $$cap_postgres_password
       label: PostgreSQL password
-      description: Generate a long random password.
-      validRegex: /^.{20,}$/
-    - id: $$cap_postgres_db
-      label: PostgreSQL database
-      defaultValue: openpartner
-      validRegex: /^[a-zA-Z0-9_]+$/
+      defaultValue: $$cap_gen_random_hex(32)
+      description: Auto-generated. Keep unchanged after the first deployment.
+      validRegex: /^[0-9a-fA-F]{32}$/
     - id: $$cap_admin_api_key
       label: OpenPartner admin API key
-      description: Use a long random value, preferably prefixed with op_.
-      validRegex: /^.{32,}$/
+      defaultValue: op_$$cap_gen_random_hex(48)
+      description: Auto-generated bootstrap/emergency API key. Keep it private.
+      validRegex: /^op_[0-9a-fA-F]{48}$/
     - id: $$cap_secrets_encryption_key
       label: Secrets encryption key
-      description: Exactly 64 hexadecimal characters (32 bytes).
+      defaultValue: $$cap_gen_random_hex(64)
+      description: Auto-generated 32-byte key used to encrypt stored credentials. Never rotate casually after first use.
       validRegex: /^[0-9a-fA-F]{64}$/
+    - id: $$cap_metrics_token
+      label: Metrics token
+      defaultValue: $$cap_gen_random_hex(32)
+      description: Auto-generated bearer token protecting the metrics endpoint.
+      validRegex: /^[0-9a-fA-F]{32}$/
     - id: $$cap_portal_domain
       label: Portal domain
       defaultValue: affiliate.hoerbuch.warsowerk.de
+      description: Public domain for the OpenPartner portal.
       validRegex: /^.+\..+$/
     - id: $$cap_cookie_domain
       label: Cookie apex domain
       defaultValue: hoerbuch.warsowerk.de
+      description: First-party attribution cookie scope. Do not include a leading dot here.
       validRegex: /^.+\..+$/
+    - id: $$cap_resend_api_key
+      label: Resend API key
+      description: External credential from Resend. Use a key with sending permission. It becomes the SMTP password.
+      validRegex: /^re_.+$/
     - id: $$cap_mail_from
-      label: Mail From
+      label: Sender address
       defaultValue: HörGeschenk <noreply@warsowerk.de>
-    - id: $$cap_smtp_host
-      label: SMTP host
-      defaultValue: ''
-    - id: $$cap_smtp_port
-      label: SMTP port
-      defaultValue: '587'
-    - id: $$cap_smtp_secure
-      label: SMTP secure
-      defaultValue: ''
-    - id: $$cap_smtp_user
-      label: SMTP user
-      defaultValue: ''
-    - id: $$cap_smtp_password
-      label: SMTP password
-      defaultValue: ''
-    - id: $$cap_metrics_token
-      label: Metrics token
-      defaultValue: ''
+      description: Must use a sender/domain that is verified in Resend.
+      validRegex: /.+@.+\..+/
   instructions:
     start: >-
       Deploys OpenPartner as four CapRover apps: PostgreSQL, API, click router and partner portal.
-      After deployment, assign domains and HTTPS manually as described in caprover/README.md.
+      Internal passwords and encryption keys are generated automatically. For email you only need a Resend API key
+      and a sender address on a domain verified in Resend.
     end: >-
-      Assign affiliate.hoerbuch.warsowerk.de to the portal app, affiliate-api.hoerbuch.warsowerk.de to the API app,
+      Assign $$cap_portal_domain to the portal app, affiliate-api.hoerbuch.warsowerk.de to the API app,
       and go.hoerbuch.warsowerk.de to the router app. Enable HTTPS and force HTTPS for all three public apps.
+      Keep the database internal. OpenPartner sends transactional email only; it does not require an inbound mailbox.
   displayName: OpenPartner for HörGeschenk
   isOfficial: false
-  description: Self-hosted OpenPartner affiliate stack for CapRover with PostgreSQL, API, router and portal.
+  description: Self-hosted OpenPartner affiliate stack for CapRover with PostgreSQL, automatic secrets and Resend SMTP.
   documentation: https://github.com/TylonHH/openpartner/blob/main/caprover/README.md
