@@ -21,16 +21,16 @@ import 'dotenv/config';
 import knex from 'knex';
 import config from '../knexfile.js';
 
-// Tables that the app role needs DML on. Mirrors the list inside the
-// app_role migration; kept in sync manually because both grow as new
-// tenanted tables land. (Coupon + NetworkOutbox got their own
-// conditional grants in their own migrations — those are also redone
-// here so a freshly-provisioned role lands fully wired.)
+// Tables that the app role needs DML on. Mirrors the current tenant-facing
+// schema rather than historical table names. This matters for installs that
+// enable OPENPARTNER_APP_DB_PASSWORD only after the one-shot app-role
+// migration has already run: ensure-app-role is then responsible for granting
+// access to the tables as they exist today.
 const TENANT_TABLES = [
   'Tenant',
   'Partner',
-  'Campaign',
-  'PartnerCampaign',
+  'Program',
+  'PartnerProgram',
   'Link',
   'Click',
   'Identity',
