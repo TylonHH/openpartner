@@ -1,0 +1,124 @@
+captainVersion: 4
+services:
+  $$cap_appname-db:
+    image: postgres:16-alpine
+    volumes:
+      - $$cap_appname-db-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: $$cap_postgres_user
+      POSTGRES_PASSWORD: $$cap_postgres_password
+      POSTGRES_DB: $$cap_postgres_db
+    caproverExtra:
+      notExposeAsWebApp: true
+
+  $$cap_appname-api:
+    image: ghcr.io/tylonhh/openpartner-api:latest
+    depends_on:
+      - $$cap_appname-db
+    environment:
+      NODE_ENV: production
+      OPENPARTNER_MODE: selfhost
+      OPENPARTNER_TENANCY: single
+      DATABASE_URL: postgres://$$cap_postgres_user:$$cap_postgres_password@srv-captain--$$cap_appname-db:5432/$$cap_postgres_db
+      API_PORT: '4601'
+      ADMIN_API_KEY: $$cap_admin_api_key
+      SECRETS_ENCRYPTION_KEY: $$cap_secrets_encryption_key
+      PORTAL_URL: https://$$cap_portal_domain
+      COOKIE_DOMAIN: .$$cap_cookie_domain
+      MAIL_FROM: $$cap_mail_from
+      SMTP_HOST: $$cap_smtp_host
+      SMTP_PORT: $$cap_smtp_port
+      SMTP_SECURE: $$cap_smtp_secure
+      SMTP_USER: $$cap_smtp_user
+      SMTP_PASSWORD: $$cap_smtp_password
+      METRICS_TOKEN: $$cap_metrics_token
+    caproverExtra:
+      containerHttpPort: '4601'
+
+  $$cap_appname-router:
+    image: ghcr.io/tylonhh/openpartner-router:latest
+    depends_on:
+      - $$cap_appname-db
+    environment:
+      NODE_ENV: production
+      OPENPARTNER_MODE: selfhost
+      OPENPARTNER_TENANCY: single
+      DATABASE_URL: postgres://$$cap_postgres_user:$$cap_postgres_password@srv-captain--$$cap_appname-db:5432/$$cap_postgres_db
+      ROUTER_PORT: '4701'
+      COOKIE_DOMAIN: .$$cap_cookie_domain
+      VELOCITY_MAX: '20'
+      VELOCITY_WINDOW_MS: '60000'
+    caproverExtra:
+      containerHttpPort: '4701'
+
+  $$cap_appname-portal:
+    image: ghcr.io/tylonhh/openpartner-portal:latest
+    depends_on:
+      - $$cap_appname-api
+    environment:
+      API_UPSTREAM: srv-captain--$$cap_appname-api:4601
+    caproverExtra:
+      containerHttpPort: '8080'
+
+caproverOneClickApp:
+  variables:
+    - id: $$cap_postgres_user
+      label: PostgreSQL user
+      defaultValue: openpartner
+      validRegex: /^[a-zA-Z0-9_]+$/
+    - id: $$cap_postgres_password
+      label: PostgreSQL password
+      description: Generate a long random password.
+      validRegex: /^.{20,}$/
+    - id: $$cap_postgres_db
+      label: PostgreSQL database
+      defaultValue: openpartner
+      validRegex: /^[a-zA-Z0-9_]+$/
+    - id: $$cap_admin_api_key
+      label: OpenPartner admin API key
+      description: Use a long random value, preferably prefixed with op_.
+      validRegex: /^.{32,}$/
+    - id: $$cap_secrets_encryption_key
+      label: Secrets encryption key
+      description: Exactly 64 hexadecimal characters (32 bytes).
+      validRegex: /^[0-9a-fA-F]{64}$/
+    - id: $$cap_portal_domain
+      label: Portal domain
+      defaultValue: affiliate.hoerbuch.warsowerk.de
+      validRegex: /^.+\..+$/
+    - id: $$cap_cookie_domain
+      label: Cookie apex domain
+      defaultValue: hoerbuch.warsowerk.de
+      validRegex: /^.+\..+$/
+    - id: $$cap_mail_from
+      label: Mail From
+      defaultValue: HörGeschenk <noreply@warsowerk.de>
+    - id: $$cap_smtp_host
+      label: SMTP host
+      defaultValue: ''
+    - id: $$cap_smtp_port
+      label: SMTP port
+      defaultValue: '587'
+    - id: $$cap_smtp_secure
+      label: SMTP secure
+      defaultValue: ''
+    - id: $$cap_smtp_user
+      label: SMTP user
+      defaultValue: ''
+    - id: $$cap_smtp_password
+      label: SMTP password
+      defaultValue: ''
+    - id: $$cap_metrics_token
+      label: Metrics token
+      defaultValue: ''
+  instructions:
+    start: >-
+      Deploys OpenPartner as four CapRover apps: PostgreSQL, API, click router and partner portal.
+      After deployment, assign domains and HTTPS manually as described in caprover/README.md.
+    end: >-
+      Assign affiliate.hoerbuch.warsowerk.de to the portal app, affiliate-api.hoerbuch.warsowerk.de to the API app,
+      and go.hoerbuch.warsowerk.de to the router app. Enable HTTPS and force HTTPS for all three public apps.
+  displayName: OpenPartner for HörGeschenk
+  isOfficial: false
+  description: Self-hosted OpenPartner affiliate stack for CapRover with PostgreSQL, API, router and portal.
+  documentation: https://github.com/TylonHH/openpartner/blob/main/caprover/README.md
