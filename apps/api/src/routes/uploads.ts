@@ -109,6 +109,14 @@ export function mountStaticUploads(app: import('express').Express): void {
     immutable: true,
     fallthrough: false,
     index: false,
+    // Uploaded logos, favicons and brand assets are intentionally public
+    // and may be embedded by the portal or Network from a different origin.
+    // Helmet's default CORP header is same-origin, which blocks these assets
+    // when API and portal use separate hosts (for example api.example.com
+    // and portal.example.com). Override it for this public asset surface.
+    setHeaders: (res) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
   });
 
   app.use('/uploads', (req, res, next) => {
