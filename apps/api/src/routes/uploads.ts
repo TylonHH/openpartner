@@ -29,15 +29,6 @@ uploadsRouter.post(
   async (req, res) => {
     const { db, tenantId } = tenantOf(req);
 
-    // req.header() returns string | undefined and normalizes any
-    // accidental array form, vs req.headers[name] which is typed as
-    // string | string[] | undefined and creates a parameter-tampering
-    // hazard if a client sends multiple Content-Type headers.
-    // Bind the raw body to a local and type-guard it BEFORE any .length
-    // read — with express.raw a mismatched Content-Type leaves req.body as
-    // {}, and CodeQL doesn't narrow req.body through the guard, so only
-    // the guarded local is used below (js/type-confusion otherwise re-fires
-    // on every fresh req.body read).
     const body: unknown = req.body;
     if (!Buffer.isBuffer(body) || body.length === 0) {
       return res.status(400).json({ error: 'empty_body' });
@@ -56,11 +47,6 @@ uploadsRouter.post(
 
     await db(TABLES.Tenant).where({ id: tenantId }).update({ logoUrl: url, updatedAt: new Date() });
 
-    // Push the new logo to the Network now instead of waiting up to an
-    // hour for the cron heartbeat. Brand admins upload then immediately
-    // check the discover/offering pages — without this they see the old
-    // (or missing) logo and assume something's broken. Fire-and-forget
-    // so a Network blip doesn't fail the upload.
     sendHeartbeat(db, tenantId).catch((err) => {
       console.error('[uploads/logo] opportunistic heartbeat failed', err);
     });
@@ -70,11 +56,6 @@ uploadsRouter.post(
 );
 
 // ---------- Favicon upload ----------
-//
-// Same flow as /uploads/logo, stamped onto Tenant.faviconUrl. Kept as a
-// separate field because logos are lockups/wordmarks while favicons are
-// square marks — one image rarely works as both. PNG/JPEG/WebP only (no
-// SVG/ICO: SVG is a script vector and browsers render PNG favicons fine).
 uploadsRouter.post(
   '/uploads/favicon',
   express.raw({
@@ -85,11 +66,6 @@ uploadsRouter.post(
   requireAdmin,
   async (req, res) => {
     const { db, tenantId } = tenantOf(req);
-    // Bind the raw body to a local and type-guard it BEFORE any .length
-    // read — with express.raw a mismatched Content-Type leaves req.body as
-    // {}, and CodeQL doesn't narrow req.body through the guard, so only
-    // the guarded local is used below (js/type-confusion otherwise re-fires
-    // on every fresh req.body read).
     const body: unknown = req.body;
     if (!Buffer.isBuffer(body) || body.length === 0) {
       return res.status(400).json({ error: 'empty_body' });
@@ -110,10 +86,6 @@ uploadsRouter.post(
 );
 
 // ---------- Brand asset image upload ----------
-//
-// Same pattern as /uploads/logo but the URL goes back to the client
-// instead of being stamped on Tenant. The client then posts to
-// /brand-resources/images with the URL + a label to attach metadata.
 uploadsRouter.post(
   '/uploads/brand-asset',
   brandAssetUploadHandler,
@@ -124,30 +96,23 @@ uploadsRouter.post(
 
 // ---------- Static handler for FS backend ----------
 //
-// When OPENPARTNER_STORAGE_KIND=fs, files written by the route above
-// need to be served. Mount express.static on /uploads pointing at the
-// configured FS dir. No-op when on s3 (the bucket serves directly).
-//
-// Public — no auth — by design: avatars + logos are shown in
-// unauthenticated contexts (creator profile pages, brand listings on
-// the Network, etc.). The keys are random hex (16 bytes), so directory
-// enumeration isn't feasible.
+// Only GET/HEAD should be handled by express.static. The handler is mounted
+// before the authenticated upload router in app.ts, so letting it see POST
+// requests causes express.static (with fallthrough:false) to answer 405 and
+// shadow /uploads/logo, /uploads/favicon and /uploads/brand-asset.
 export function mountStaticUploads(app: import('express').Express): void {
   const dir = fsStorageDir();
   if (!dir) return;
-  app.use(
-    '/uploads',
-    express.static(dir, {
-      // Same cache header as S3 ACLs above. Keys change on every
-      // re-upload so immutable is safe.
-      maxAge: '365d',
-      immutable: true,
-      // Don't fall through to the next handler on 404 — return a clean
-      // 404 instead of attempting to interpret /uploads/<key> as
-      // something else further down the stack.
-      fallthrough: false,
-      // Don't ever serve a directory listing.
-      index: false,
-    }),
-  );
+
+  const staticUploads = express.static(dir, {
+    maxAge: '365d',
+    immutable: true,
+    fallthrough: false,
+    index: false,
+  });
+
+  app.use('/uploads', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    return staticUploads(req, res, next);
+  });
 }
