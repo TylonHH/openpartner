@@ -182,9 +182,33 @@ After changing API environment variables, deploy/restart the API app. After chan
 
 ## Database migrations and RLS app role
 
-The API image runs migrations at startup. `OPENPARTNER_APP_DB_PASSWORD` allows the migration layer to provision/rotate the `openpartner_app` role. `DATABASE_URL_APP` then routes tenant-scoped API work through that non-superuser role so PostgreSQL RLS remains active as defense in depth.
+The API image runs migrations at startup. `OPENPARTNER_APP_DB_PASSWORD` allows the boot-time reconciliation step to provision/rotate the `openpartner_app` role. `DATABASE_URL_APP` then routes tenant-scoped API work through that non-superuser role so PostgreSQL RLS remains active as defense in depth.
 
 The privileged `DATABASE_URL` remains required for migrations and platform-wide operations.
+
+### Retrofitting RLS onto an existing database
+
+If an installation originally ran without `OPENPARTNER_APP_DB_PASSWORD` and later enables `DATABASE_URL_APP`, the `openpartner_app` role must have both the matching password and DML grants for the current tenant tables. Typical failures are:
+
+```text
+password authentication failed for user "openpartner_app"
+permission denied for table Program
+```
+
+The API entrypoint runs `ensure-app-role` on every boot to reconcile the password and grants. Older images may still carry a stale table list from before `Campaign` / `PartnerCampaign` were renamed to `Program` / `PartnerProgram`. In that case, either deploy an image containing the renamed-table grant fix or repair the role once with the privileged database user:
+
+```sql
+GRANT CONNECT ON DATABASE openpartner TO openpartner_app;
+GRANT USAGE ON SCHEMA public TO openpartner_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO openpartner_app;
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO openpartner_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE openpartner IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO openpartner_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE openpartner IN SCHEMA public
+  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO openpartner_app;
+```
+
+Keep `OPENPARTNER_APP_DB_PASSWORD` and the password embedded in `DATABASE_URL_APP` identical. Prefer a URL-safe random value (for example hex) so the PostgreSQL URL does not require additional escaping.
 
 ## HörGeschenk integration boundary
 
