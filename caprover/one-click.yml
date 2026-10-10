@@ -15,15 +15,25 @@ services:
     image: ghcr.io/tylonhh/openpartner-api:latest
     depends_on:
       - $$cap_appname-db
+    volumes:
+      - $$cap_appname-api-uploads:/var/lib/openpartner/uploads
     environment:
       NODE_ENV: production
       OPENPARTNER_MODE: selfhost
       OPENPARTNER_TENANCY: single
       DATABASE_URL: postgres://openpartner:$$cap_postgres_password@srv-captain--$$cap_appname-db:5432/openpartner
+      DATABASE_URL_APP: postgres://openpartner_app:$$cap_app_db_password@srv-captain--$$cap_appname-db:5432/openpartner
+      OPENPARTNER_APP_DB_PASSWORD: $$cap_app_db_password
       API_PORT: '4601'
       ADMIN_API_KEY: $$cap_admin_api_key
       SECRETS_ENCRYPTION_KEY: $$cap_secrets_encryption_key
       PORTAL_URL: https://$$cap_portal_domain
+      OPENPARTNER_OUTBOUND_ALLOWED_PORTS: '80,443'
+      OPENPARTNER_STORAGE_KIND: fs
+      OPENPARTNER_STORAGE_FS_DIR: /var/lib/openpartner/uploads
+      OPENPARTNER_STORAGE_FS_PUBLIC_BASE: https://$$cap_api_domain/uploads
+      STRIPE_SECRET_KEY: $$cap_stripe_secret_key
+      STRIPE_WEBHOOK_SECRET_PLATFORM: $$cap_stripe_webhook_secret_platform
       MAIL_FROM: $$cap_mail_from
       SMTP_HOST: smtp.resend.com
       SMTP_PORT: '465'
@@ -66,6 +76,11 @@ caproverOneClickApp:
       defaultValue: $$cap_gen_random_hex(32)
       description: Auto-generated. Keep unchanged after the first deployment.
       validRegex: /^[0-9a-fA-F]{32}$/
+    - id: $$cap_app_db_password
+      label: OpenPartner app-role database password
+      defaultValue: $$cap_gen_random_hex(32)
+      description: Auto-generated password for the RLS-enabled openpartner_app database role. Keep unchanged after first deployment.
+      validRegex: /^[0-9a-fA-F]{32}$/
     - id: $$cap_admin_api_key
       label: OpenPartner admin API key
       defaultValue: op_$$cap_gen_random_hex(48)
@@ -83,14 +98,27 @@ caproverOneClickApp:
       validRegex: /^[0-9a-fA-F]{32}$/
     - id: $$cap_portal_domain
       label: Portal domain
-      defaultValue: affiliate.hoerbuch.warsowerk.de
+      defaultValue: affiliate.warsowerk.de
       description: Public domain for the OpenPartner portal.
+      validRegex: /^.+\..+$/
+    - id: $$cap_api_domain
+      label: API domain
+      defaultValue: affiliate-api.warsowerk.de
+      description: Public API domain. Also used as the public base URL for uploaded brand assets.
       validRegex: /^.+\..+$/
     - id: $$cap_cookie_domain
       label: Cookie apex domain
-      defaultValue: hoerbuch.warsowerk.de
+      defaultValue: warsowerk.de
       description: First-party attribution cookie scope. Do not include a leading dot here.
       validRegex: /^.+\..+$/
+    - id: $$cap_stripe_secret_key
+      label: Stripe secret key
+      defaultValue: ''
+      description: Stripe secret key for the same account used by HörGeschenk. Required for Stripe conversion attribution; leave blank only if Stripe attribution is intentionally disabled.
+    - id: $$cap_stripe_webhook_secret_platform
+      label: Stripe platform webhook signing secret
+      defaultValue: ''
+      description: Signing secret for the OpenPartner Stripe webhook destination that receives customer/subscription/invoice/charge events. Prefer this over the legacy STRIPE_WEBHOOK_SECRET variable.
     - id: $$cap_resend_api_key
       label: Resend API key
       description: External credential from Resend. Use a key with sending permission. It becomes the SMTP password.
@@ -103,13 +131,14 @@ caproverOneClickApp:
   instructions:
     start: >-
       Deploys OpenPartner as four CapRover apps: PostgreSQL, API, click router and partner portal.
-      Internal passwords and encryption keys are generated automatically. For email you only need a Resend API key
-      and a sender address on a domain verified in Resend.
+      Internal passwords and encryption keys are generated automatically. The API uses a persistent upload volume,
+      an RLS-enabled app database role, Resend SMTP and optional Stripe conversion attribution.
     end: >-
-      Assign $$cap_portal_domain to the portal app, affiliate-api.hoerbuch.warsowerk.de to the API app,
-      and go.hoerbuch.warsowerk.de to the router app. Enable HTTPS and force HTTPS for all three public apps.
-      Keep the database internal. OpenPartner sends transactional email only; it does not require an inbound mailbox.
+      Assign $$cap_portal_domain to the portal app, $$cap_api_domain to the API app,
+      and go.warsowerk.de to the router app. Enable HTTPS and force HTTPS for all three public apps.
+      Keep the database internal. Existing installations must add new environment variables and persistent storage manually;
+      re-running the One-Click template does not retrofit them safely.
   displayName: OpenPartner for HörGeschenk
   isOfficial: false
-  description: Self-hosted OpenPartner affiliate stack for CapRover with PostgreSQL, automatic secrets and Resend SMTP.
+  description: Self-hosted OpenPartner affiliate stack for CapRover with PostgreSQL, persistent uploads, RLS app role, Resend SMTP and Stripe attribution support.
   documentation: https://github.com/TylonHH/openpartner/blob/main/caprover/README.md
