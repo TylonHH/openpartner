@@ -122,6 +122,19 @@ describe.skipIf(skipIntegration)('api integration', () => {
       await db(TABLES.Tenant).where({ id: DEFAULT_TENANT_ID }).update({ couponIntegrationVerifiedAt: oldTenant?.couponIntegrationVerifiedAt ?? null });
     }
   });
+  it('validates and persists the public router origin across settings saves', async () => {
+    for (const routerUrl of ['javascript:alert(1)', 'https://user:pass@example.com', 'https://example.com/r', 'https://example.com?x=1', 'https://example.com/#x']) {
+      const rejected = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ routerUrl });
+      expect(rejected.status).toBe(400);
+    }
+    const saved = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ routerUrl: 'https://links.example.com/' });
+    expect(saved.status).toBe(200);
+    expect(saved.body.routerUrl).toBe('https://links.example.com');
+    const other = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ programName: 'Brand' });
+    expect(other.body.routerUrl).toBe('https://links.example.com');
+    const cleared = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ routerUrl: '' });
+    expect(cleared.body.routerUrl).toBeNull();
+  });
   it('persists partner Network visibility across unrelated settings saves', async () => {
     const initial = await request(app).get('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`);
     expect(initial.body.partnerNetworkVisible).toBe(true);
