@@ -201,7 +201,7 @@ function Shell() {
   // White-label tenants are isolated from the shared Network — gate the
   // Network/Discover routes on this so direct navigation can't reach them
   // even though the nav links are also hidden.
-  const { whiteLabel } = useBrand();
+  const { whiteLabel, partnerNetworkVisible, isLoading: brandLoading } = useBrand();
   // Brand approval gate: /branding carries the tenant's approvalStatus.
   // usePublicBrand hits it through api() so it's tenant-scoped under the
   // /t/<slug>/ prefix (a prefix-less fetch would resolve to the platform
@@ -222,8 +222,10 @@ function Shell() {
     setDrawerOpen(false);
   }, [location.pathname]);
 
-  if (auth.loading) return <CenteredMessage>Loading…</CenteredMessage>;
+  if (auth.loading || brandLoading) return <CenteredMessage>Loading…</CenteredMessage>;
   if (!auth.principal) return <Navigate to={`${tenantBase}/login`} state={{ from: location }} replace />;
+
+  const showNetwork = !whiteLabel && (auth.principal.role === 'admin' || partnerNetworkVisible);
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: theme.bg }}>
@@ -249,7 +251,7 @@ function Shell() {
 
           {/* Network discovery — open to anyone signed in (vendor admin can
               browse too). Hidden entirely for white-label tenants. */}
-          {!whiteLabel && (
+          {showNetwork && (
             <>
               <Route path="network/discover" element={<DiscoverPage />} />
               <Route path="network/offerings/:id" element={<OfferingDetailPage principal={auth.principal} />} />
@@ -260,7 +262,7 @@ function Shell() {
           {/* Partner-only Network surfaces. */}
           {auth.principal.role === 'partner' && (
             <>
-              {!whiteLabel && (
+              {showNetwork && (
                 <>
                   <Route path="network/affiliations" element={<MyAffiliationsPage />} />
                   <Route path="network/requests" element={<MyRequestsPage />} />
@@ -392,7 +394,7 @@ function MobileDrawer({ open, onClose, children }: { open: boolean; onClose: () 
 export function Sidebar({ principal, variant = 'sidebar' }: { principal: Principal; variant?: 'sidebar' | 'drawer' }) {
   const nav = useNavigate();
   const tenantBase = useTenantBase();
-  const { programName, supportEmail, logoUrl, whiteLabel } = useBrand();
+  const { programName, supportEmail, logoUrl, whiteLabel, partnerNetworkVisible } = useBrand();
   const isDrawer = variant === 'drawer';
 
   return (
@@ -436,7 +438,7 @@ export function Sidebar({ principal, variant = 'sidebar' }: { principal: Princip
           {principal.role === 'partner' && <NavItem to="/postbacks" icon={<Webhook size={16} />}>Postbacks</NavItem>}
         </div>
 
-        {principal.role === 'partner' && !whiteLabel && (
+        {principal.role === 'partner' && !whiteLabel && partnerNetworkVisible && (
           <NavSection title="Network" collapsible storageKey="partner-network">
             <NavItem to="/network/discover" icon={<Globe size={16} />}>Discover programs</NavItem>
             <NavItem to="/network/affiliations" icon={<Megaphone size={16} />}>My partnerships</NavItem>
