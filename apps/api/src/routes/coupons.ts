@@ -141,13 +141,13 @@ couponsRouter.post('/partners/:id/coupons', requireAuth, async (req, res) => {
   //   - scoped key with 'partners:write' → allowed only when the bound
   //     program's partnersMayCustomizeCode flag is true. Network proxies
   //     a creator's "Add another code" through this path.
-  //   - everything else → 403. (Partner-session principals do NOT auto-
-  //     get this; partners only manage codes via the Network's federated
-  //     PATCH/POST surface, never against the vendor instance directly.)
+  //   - local partner → own codes only, with program access and customization enabled.
+  //   - everything else → 403.
   const principal = req.principal;
   const isAdmin = principal?.role === 'admin';
   const isFederated = principal?.role === 'scoped' && principal.scopes.includes('partners:write');
-  if (!isAdmin && !isFederated) return res.status(403).json({ error: 'forbidden' });
+  const isPartner = principal?.role === 'partner' && principal.partnerId === req.params.id;
+  if (!isAdmin && !isFederated && !isPartner) return res.status(403).json({ error: 'forbidden' });
 
   const { db, tenantId } = tenantOf(req);
   const body = createSchema.safeParse(req.body ?? {});
@@ -185,6 +185,13 @@ couponsRouter.post('/partners/:id/coupons', requireAuth, async (req, res) => {
   // want regardless of the partner-self-service setting.
   if (!isAdmin && !program.partnersMayCustomizeCode) {
     return res.status(403).json({ error: 'partner_customization_disabled' });
+  }
+
+  if (isPartner) {
+    const grant = await db(TABLES.PartnerProgram).where({ partnerId: partner.id, programId: program.id }).first();
+    if (!grant) return res.status(403).json({ error: 'campaign_not_granted' });
+    const { campaignAcceptsNewActivity } = await import('../campaign-lifecycle.js');
+    if (!campaignAcceptsNewActivity(program)) return res.status(409).json({ error: 'campaign_not_active' });
   }
 
   // Active-codes cap. Counts only non-deactivated rows so a partner who
@@ -255,7 +262,8 @@ couponsRouter.delete('/partners/:id/coupons/:couponId', requireAuth, async (req,
   const principal = req.principal;
   const isAdmin = principal?.role === 'admin';
   const isFederated = principal?.role === 'scoped' && principal.scopes.includes('partners:write');
-  if (!isAdmin && !isFederated) return res.status(403).json({ error: 'forbidden' });
+  const isPartner = principal?.role === 'partner' && principal.partnerId === req.params.id;
+  if (!isAdmin && !isFederated && !isPartner) return res.status(403).json({ error: 'forbidden' });
 
   const { db } = tenantOf(req);
   const coupon = await db<CouponRow>(TABLES.Coupon)
@@ -268,6 +276,11 @@ couponsRouter.delete('/partners/:id/coupons/:couponId', requireAuth, async (req,
 
   if (!isAdmin && !program.partnersMayCustomizeCode) {
     return res.status(403).json({ error: 'partner_customization_disabled' });
+  }
+
+  if (isPartner) {
+    const grant = await db(TABLES.PartnerProgram).where({ partnerId: req.params.id, programId: program.id }).first();
+    if (!grant) return res.status(403).json({ error: 'campaign_not_granted' });
   }
 
   // Idempotent: re-deactivating a deactivated coupon is a no-op +
