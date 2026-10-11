@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FileJson, FileSpreadsheet, Archive, Upload, Database } from 'lucide-react';
-import { getApiKey } from '../api.js';
+import { currentTenantSlug, getApiKey } from '../api.js';
 import { theme } from '../theme.js';
 import { Button, Card, Page, SectionHeading } from '../ui.js';
 
@@ -24,22 +24,45 @@ const TABLES = [
   'CommissionAdjustment',
 ];
 
-export function AdminExport() {
-  const key = getApiKey() ?? '';
+function authenticatedRequest(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const key = getApiKey();
+  if (key) headers.set('Authorization', `Bearer ${key}`);
 
-  function download(path: string) {
-    fetch(`/api${path}`, { headers: { Authorization: `Bearer ${key}` } })
-      .then((res) => res.blob())
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = path.split('/').pop() ?? 'export';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      });
+  const slug = currentTenantSlug();
+  const tenantPrefix = slug ? `/t/${slug}` : '';
+
+  return fetch(`/api${tenantPrefix}${path}`, {
+    ...init,
+    headers,
+    credentials: 'include',
+  });
+}
+
+export function AdminExport() {
+  async function download(path: string) {
+    const res = await authenticatedRequest(path);
+    if (!res.ok) {
+      let detail = `${res.status} ${res.statusText}`;
+      try {
+        const body = (await res.json()) as { error?: string; detail?: string };
+        detail = body.detail ?? body.error ?? detail;
+      } catch {
+        // Keep the HTTP status when the response is not JSON.
+      }
+      console.error(`Export failed: ${detail}`);
+      return;
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = path.split('/').pop() ?? 'export';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -143,7 +166,6 @@ interface ImportResult {
 }
 
 function PartnersCsvImporter() {
-  const key = getApiKey() ?? '';
   const [csv, setCsv] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -153,9 +175,9 @@ function PartnersCsvImporter() {
     setError(null);
     setBusy(true);
     try {
-      const res = await fetch(`/api/import/partners-csv?dryRun=${dryRun}`, {
+      const res = await authenticatedRequest(`/import/partners-csv?dryRun=${dryRun}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'text/csv' },
+        headers: { 'Content-Type': 'text/csv' },
         body: csv,
       });
       const json = await res.json();
