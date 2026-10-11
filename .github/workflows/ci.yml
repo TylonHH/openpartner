@@ -76,6 +76,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Portal proxy regression
+        run: node scripts/test-portal-proxy.mjs
+
       - name: Audit
         # Keep reporting high/critical findings while dependency remediation
         # is in progress, but do not block unrelated development PRs.
