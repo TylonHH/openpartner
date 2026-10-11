@@ -6,7 +6,8 @@ export default defineConfig({
     server: 'src/server.ts',
   },
   format: ['esm', 'cjs'],
-  dts: true,
+  // ponytail: tsup 8 injects baseUrl; migrate the builder before TypeScript 7.
+  dts: { compilerOptions: { ignoreDeprecations: '6.0' } },
   sourcemap: true,
   clean: true,
   // We ship both ESM (modern bundlers) and CJS (older Node). Target ES2020

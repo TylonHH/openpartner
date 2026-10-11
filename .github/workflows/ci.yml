@@ -70,6 +70,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Build all workspaces
+        run: pnpm build
+
       - name: Test
         run: pnpm test
 
