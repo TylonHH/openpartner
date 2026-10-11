@@ -11,7 +11,7 @@ Scope: manage `TylonHH/openpartner`, verify the affiliate flow, create focused o
 - Initialized `F:\_CODEX\_OpenPartner` around the existing private `.env`. Base `origin/main`: `1b7354d3921d7314e0dd054526fd1b1851a0a607`. Working branch: `codex/project-initialization`; comparison remote: `getcoherence/openpartner`.
 - Inventoried 13 original origin branches. No historical branch was deleted or merged. Ancestry counts and dispositions are in `OVERVIEW.md`.
 - Existing [PR #7](https://github.com/TylonHH/openpartner/pull/7) is 3 commits ahead and 12 behind the initial main. Its old audit failure predates main's dependency fixes. Storage, domains and optional RLS configuration belong in that separate review.
-- Created root `AGENTS.md`, architecture/integration overview, acceptance matrix, isolated validation runner, and skills for validation and AgentMail magic login.
+- Created root `AGENTS.md`, architecture/integration overview, acceptance matrix, isolated validation runner, and skills for validation and AgentMail magic login. Initialization review: [PR #15](https://github.com/TylonHH/openpartner/pull/15).
 - Related `F:\_CODEX\_AudioBook\TEST_website` has extensive unpublished work and a stale local main. Preserved all edits. Fetched website origin main: `9d9da2583ef2fa9d1d78f025bebbdd8bd41e96ce`; no OpenPartner wiring found in current server/client/docs/environment example. Use an isolated worktree for integration.
 
 ### Verification and origin PRs
@@ -28,6 +28,7 @@ Local reference: Node 22.20.0, pnpm 9.15.4, PostgreSQL 16.15. Host Node is 26.10
 - [PR #14](https://github.com/TylonHH/openpartner/pull/14), commit `82a71fa`: fix SDK TypeScript 6 declaration generation and add full builds to CI. TypeScript 7 will require tsup to stop injecting deprecated `baseUrl`.
 - All four GitHub checks on each of PRs #12, #13 and #14 passed: typecheck/test and API/router/portal Docker builds. PR #14's CI also verifies all workspace builds. No merge or production rollout performed.
 - Private reproduction logs: `.cache/validation/preview-test.log` and `preview-build.log`. They contain dummy fixture identities/tokens and stay ignored.
+- Stopped the owned local database after verification; restart it for the next validation run. Root checkout is committed; private environments and worktrees remain ignored.
 
 Earlier failures remain recorded: Node 26's native storage shadows jsdom in SDK tests; Node 22 resolves the environment mismatch. A blank app URL made pg use localhost:5432; the application fix is PR #12. One corrected baseline run had 544 passes and two funding-sweep per-run limit/advance failures; all 62 tests in that file then passed, followed by the 546-test main run and 554-test combined run. The intermittent funding cause is unresolved; no speculative financial fix was applied.
 
