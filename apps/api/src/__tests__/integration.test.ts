@@ -70,6 +70,58 @@ beforeEach(async () => {
 });
 
 describe.skipIf(skipIntegration)('api integration', () => {
+  it('local partner sessions manage only their own granted customizable coupon codes', async () => {
+    const { createSession } = await import('../auth-sessions.js');
+    const createPartner = async (email: string) => {
+      const response = await request(app).post('/partners').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ email, name: email, programIds: [] });
+      expect(response.status).toBe(201);
+      return response.body.id as string;
+    };
+    const owner = await createPartner('coupon-owner@example.com');
+    const other = await createPartner('coupon-other@example.com');
+    const program = await request(app).post('/programs').set('Authorization', `Bearer ${ADMIN_KEY}`).send({
+      name: 'Coupons', destinationUrl: 'https://example.com', commissionRule: { type: 'percent', value: 10 }, partnersMayCustomizeCode: true,
+    });
+    expect(program.status).toBe(201);
+    const programId = program.body.id as string;
+    const session = await createSession(db, { tenantId: DEFAULT_TENANT_ID, principalKind: 'partner', principalId: owner });
+    const cookie = `op_session=${session.plaintext}`;
+    const oldTenant = await db(TABLES.Tenant).where({ id: DEFAULT_TENANT_ID }).first('couponIntegrationVerifiedAt');
+    await db(TABLES.Tenant).where({ id: DEFAULT_TENANT_ID }).update({ couponIntegrationVerifiedAt: new Date() });
+    try {
+      const post = (partnerId: string, code: string) => request(app).post(`/partners/${partnerId}/coupons`).set('Cookie', cookie).send({ programId, code });
+      expect((await post(other, 'OTHER')).status).toBe(403);
+      const ungranted = await post(owner, 'UNGRANTED');
+      expect(ungranted.status).toBe(403);
+      expect(ungranted.body.error).toBe('campaign_not_granted');
+      await db(TABLES.PartnerProgram).insert({ id: ulid(), tenantId: DEFAULT_TENANT_ID, partnerId: owner, programId, source: 'admin' });
+      const programs = await request(app).get('/me/programs').set('Cookie', cookie);
+      expect(programs.body.programs[0].partnersMayCustomizeCode).toBe(true);
+      await db(TABLES.Program).where({ id: programId }).update({ partnersMayCustomizeCode: false });
+      expect((await post(owner, 'DISABLED')).body.error).toBe('partner_customization_disabled');
+      await db(TABLES.Program).where({ id: programId }).update({ partnersMayCustomizeCode: true, endsAt: new Date(Date.now() - 1000) });
+      expect((await post(owner, 'ENDED')).body.error).toBe('campaign_not_active');
+      await db(TABLES.Program).where({ id: programId }).update({ endsAt: null });
+      const created = await post(owner, 'MYCODE');
+      expect(created.status).toBe(201);
+      const couponId = created.body.id as string;
+      const otherCoupon = await request(app).post(`/partners/${other}/coupons`).set('Authorization', `Bearer ${ADMIN_KEY}`).send({ programId, code: 'OTHERCODE' });
+      expect(otherCoupon.status).toBe(201);
+      expect((await request(app).delete(`/partners/${other}/coupons/${otherCoupon.body.id}`).set('Cookie', cookie)).status).toBe(403);
+      expect((await request(app).delete(`/partners/${owner}/coupons/${otherCoupon.body.id}`).set('Cookie', cookie)).status).toBe(404);
+      for (let index = 0; index < 4; index++) expect((await post(owner, `CODE${index}`)).status).toBe(201);
+      expect((await post(owner, 'LIMIT')).body.error).toBe('active_codes_cap_reached');
+      await db(TABLES.Program).where({ id: programId }).update({ partnersMayCustomizeCode: false });
+      expect((await request(app).delete(`/partners/${owner}/coupons/${couponId}`).set('Cookie', cookie)).body.error).toBe('partner_customization_disabled');
+      await db(TABLES.Program).where({ id: programId }).update({ partnersMayCustomizeCode: true });
+      expect((await request(app).delete(`/partners/${owner}/coupons/${couponId}`).set('Cookie', cookie)).status).toBe(200);
+      expect((await post(owner, 'REPLACEMENT')).status).toBe(201);
+      expect((await request(app).post('/coupons/redeem').set('Cookie', cookie).send({})).status).toBe(403);
+    } finally {
+      await db(TABLES.Session).where({ id: session.id }).del();
+      await db(TABLES.Tenant).where({ id: DEFAULT_TENANT_ID }).update({ couponIntegrationVerifiedAt: oldTenant?.couponIntegrationVerifiedAt ?? null });
+    }
+  });
   it('validates and persists the public router origin across settings saves', async () => {
     for (const routerUrl of ['javascript:alert(1)', 'https://user:pass@example.com', 'https://example.com/r', 'https://example.com?x=1', 'https://example.com/#x']) {
       const rejected = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ routerUrl });
