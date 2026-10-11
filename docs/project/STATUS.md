@@ -2,6 +2,8 @@
 
 All dates use Europe/Berlin. Read this document at the start of the next task.
 
+Latest deployment check, 2026-10-11: PROD webhook signatures accepted; SANDBOX, wrong and missing signatures rejected. Magic-link login and seven portal pages passed. Logout cookie regression remains present; full provider/website integration acceptance remains open. Details are in the final section.
+
 ## 2026-10-11 — Initialization completed; integration remains open
 
 Scope: manage `TylonHH/openpartner`, verify the affiliate flow, create focused origin PRs, and integrate Stripe with HörGeschenk. Program administration follows later.
@@ -78,3 +80,18 @@ The user added `checkout.session.completed` to PROD and SANDBOX destinations and
 For live rollout, the API must use the live Stripe API key in `STRIPE_SECRET_KEY` and the PROD destination secret in `STRIPE_WEBHOOK_SECRET_PLATFORM`. For sandbox integration, use the sandbox API key and SANDBOX destination secret on the test application. A CLI-forwarded local receiver uses its own listener secret. Do not enable both live and sandbox financial writes against one ledger as an incidental test workaround.
 
 Remaining acceptance: isolated referral/customer stitching, genuine signed provider delivery, one-time revenue, retry deduplication, refund behavior and website integration. The initial missing-signing-secret and missing-Checkout-subscription blockers are now resolved for sandbox signature tests.
+
+## 2026-10-11 — Production deployment verification
+
+The user reports a newly deployed image and production configuration. The agent performed post-deployment checks without changing CapRover, Stripe resources or program policy:
+
+- Portal and API health return HTTP 200. Admin environment-bearer whoami returns 200, admin/source env.
+- Safe synthetic Checkout probe signed with `STRIPE_WHEC_PROD`: HTTP 200, skipped with `unresolved_tenant`. Same unmapped probe signed with `STRIPE_WHEC_SANDBOX`: 400 `invalid_signature`. Deliberately wrong secret: 400 `invalid_signature`; omitted signature: 400 `missing_signature`. These requests contain no tenant, customer or click reference and perform no conversion/financial write.
+- This reverses the earlier signature-configuration failure: the hosted API now accepts the provided PROD secret and rejects the provided SANDBOX secret. It verifies signing configuration, not actual Stripe delivery or the runtime API key's account/mode. The user reports production credentials; the local LIVE key was independently verified earlier.
+- Reused the existing AgentMail inbox/admin and requested one signin link. Mail arrived; fresh Chromium context completed magic login with 200 whoami, admin/source session and matching named admin.
+- All seven portal routes render with expected headings and no page exceptions. The root admin heading is `Partner Program` (the navigation label is Dashboard). Program read returns 200 and one program.
+- UI signout returns to login; whoami becomes 401; consumed-token verification returns 400 `invalid_or_expired_token`. The empty `op_session` cookie still expires about 30 days in the future. Existing PR #13's cookie fix is not effective in this deployment. Test browser/context closed and session revoked.
+- Refetched origin: main remains `1b7354d3921d7314e0dd054526fd1b1851a0a607`; PRs #12–#15 remain open. No deployed image digest/commit was exposed by the checks, so do not infer that the bug PRs are included merely from the new deployment.
+- Updated the webhook and magic-login skills with negative-signature checks, the exact root heading and cookie-expiry verification. No unchanged local financial suite was rerun for this configuration check.
+
+Next acceptance remains isolated sandbox provider/website integration, including identity, paid revenue, retries and refunds. Signature-only probes are not evidence of a completed payment or commission. No live purchase, refund, transfer or payout was triggered.

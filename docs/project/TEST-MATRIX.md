@@ -13,15 +13,15 @@ Status vocabulary: **passed** (specific executed check), **failed** (reproduced 
 | Database tenant isolation | Non-superuser app role exists; RLS assertions execute | Passed in combined preview; nine multi-tenant cases, no missing-role warning |
 | Production build | Every workspace builds | Main fails SDK declaration generation; combined preview and PR #14 CI pass |
 | Dependency audit | High/critical production advisories recorded | Passed at high threshold; 2 low/17 moderate remain |
-| Public deployment | Portal 200, API health 200 on verified current origins | Passed; deployed revision unknown |
+| Public deployment | Portal 200, API health 200 on verified current origins | Passed again after user-reported redeployment; deployed revision unknown |
 | API-key auth | Live whoami reports admin/env; admin/program reads succeed | Passed |
 | Magic-link delivery | Own AgentMail inbox receives admin invitation | Passed |
-| Magic-link browser login | Fresh context, named session, portal navigation, no unexpected errors | Regular signin passed; first invitation attempt needs investigation |
-| Token lifecycle | Used token rejected, signout removes access and cookie | Live rejection/access revocation passed; cookie bug fixed/tested in PR #13, deployment pending |
+| Magic-link browser login | Fresh context, named session, portal navigation, no unexpected errors | Passed again after redeployment; named admin and seven pages verified; first invitation anomaly still unresolved |
+| Token lifecycle | Used token rejected, signout removes access and cookie | Post-deployment token rejection/access revocation passed; blank cookie still persists for 30 days, PR #13 not effective yet |
 | Program read access | Bearer/session agree on the existing program | Passed; same one program |
 | Stripe sandbox access | Test key authenticates; existing endpoint subscriptions inspected | Passed, livemode=false; Checkout completion subscription now verified, sandbox/prod signing-secret aliases provided |
 | Stripe live reads | Live key authenticates; existing endpoint subscriptions inspected without mutations | Passed, livemode=true; enabled PROD destination includes Checkout completion; account differs from sandbox |
-| Hosted webhook signature | Safe unmapped Checkout probe authenticates with the deployed secret | Sandbox-secret probe 200/skipped; PROD-secret probe 400 invalid_signature; live-secret rollout pending |
+| Hosted webhook signature | Safe unmapped Checkout probe authenticates with the deployed secret | Post-deployment PROD-secret probe 200/skipped; SANDBOX/wrong/missing signatures 400; genuine provider delivery still pending |
 | Stripe CLI | Same sandbox account, test mode, separate listener secret | Passed; no trigger or forwarding listener left running |
 
 ## Full functional acceptance
