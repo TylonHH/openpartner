@@ -89,6 +89,17 @@ METRICS_TOKEN=<AUTO_GENERATED>
 
 OpenPartner self-host mode does not require the platform billing Stripe variables. Add Stripe credentials only when the HörGeschenk integration actually needs them.
 
+### Optional creator Network
+
+For the current hosted Network API, set `NETWORK_URL=https://network.openpartner.dev/api`
+on the API app. Self-hosted instances connect through the portal's email-verification
+flow; `NETWORK_ADMIN_API_KEY` belongs to the Network operator and is not required.
+
+The portal proxy preserves `X-Forwarded-Proto` so Network registration uses the
+public HTTPS scheme after TLS terminates at CapRover. Keep the portal container
+behind a trusted ingress that overwrites client-supplied forwarding headers.
+Ensure the ingress forwards `X-Forwarded-Proto: https` for HTTPS requests.
+
 ### Router
 
 ```env
