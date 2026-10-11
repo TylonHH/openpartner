@@ -1,10 +1,10 @@
 # Project status
 
-Latest image publication, 2026-10-11: origin PRs #12–#14 are merged into `main` at `fe89fbd`. Final main CI and all image builds passed; API, router and portal are published as `sha-fe89fbd` and `latest`, with matching revision labels verified. CapRover deployment and full HörGeschenk integration remain pending. Evidence is in the final section.
+Latest image publication, 2026-10-11: origin PRs #12–#14 are merged into `main` at `fe89fbd`. Final main CI and all image builds passed; API, router and portal are published as `sha-fe89fbd` and `latest`, with matching revision labels verified. The user reports deploying all images; post-rollout portal/login/signature checks passed and the cookie fix is effective. Exact deployed digests remain unexposed; full HörGeschenk integration remains pending. Evidence is in the final section.
 
 All dates use Europe/Berlin. Read this document at the start of the next task.
 
-Latest deployment check, 2026-10-11: PROD webhook signatures accepted; SANDBOX, wrong and missing signatures rejected. Magic-link login and seven portal pages passed. Logout cookie regression remains present; full provider/website integration acceptance remains open. Details are in the final section.
+Latest deployment check, 2026-10-11: PROD webhook signatures accepted; SANDBOX, wrong and missing signatures rejected. Magic-link login and seven actual portal routes passed. Logout removes the session cookie and revokes access; full provider/website integration acceptance remains open. Details are in the final section.
 
 ## 2026-10-11 — Initialization completed; integration remains open
 
@@ -120,3 +120,14 @@ The user explicitly requested merging the reviewed fixes into origin main and pu
 - Deployable tags: `ghcr.io/tylonhh/openpartner-api:sha-fe89fbd`, `ghcr.io/tylonhh/openpartner-router:sha-fe89fbd`, and `ghcr.io/tylonhh/openpartner-portal:sha-fe89fbd`. Prefer these commit-specific tags over a rolling tag for the user's rollout.
 - Final [main CI 38146326498](https://github.com/TylonHH/openpartner/actions/runs/38146326498) passed all four jobs: typecheck/test and API/router/portal builds. Frozen installation, migrations, lint, typecheck and all workspace builds passed. Vitest reports 554 passed tests in 54 files (API 528/49, SDK 11/2, router 3/1, portal 12/2), but the existing CI fixture lacks a suitable app role and logs that RLS assertions were skipped. Actual RLS coverage is established by the previously verified identical local preview, not this CI count. Audit: 2 low, 17 moderate, zero high/critical. Private final CI log: `.cache/main-ci-fe89fbd.log`.
 - No CapRover deployment or runtime secret change was made. The images include the three bug/build fixes; the full HörGeschenk/Stripe attribution, revenue, retry and refund integration remains open.
+
+## 2026-10-11 — User rollout and next-work assessment
+
+The user reports deploying all images and asks what remains. Reused the existing own AgentMail inbox/admin for one authorized login and ran post-rollout checks; no CapRover settings, program policies or financial objects were changed.
+
+- Portal and API health: 200; environment-admin whoami: 200/admin/env. Router root: 404, which does not establish an actual referral redirect.
+- Magic link delivered and verified in fresh Chromium. Session whoami: 200/admin/session, with the expected inbox email in the nested `admin` object. All seven actual routes (`/`, `/admin/programs`, `/admin/partners`, `/links`, `/commissions`, `/payouts`, `/admin/settings`) return 200, remain on their expected routes and show their expected headings. No page exceptions. Unknown shorthand routes redirect to the dashboard and are not counted as page coverage.
+- UI signout: 200, login redirect, anonymous whoami 401, no `op_session` cookie remaining, and no `Max-Age` on its clearing header. Reused token: 400. The previously reproduced logout cookie regression is now fixed in the live behavior. Closed the test context/browser after signout.
+- Signature-only Checkout probe without tenant/customer/click metadata: PROD 200/skipped/unresolved_tenant; SANDBOX and wrong secret 400/invalid_signature; missing signature 400/missing_signature. No attribution or money write. These checks still do not prove provider delivery, payment or a commission.
+- Private redacted evidence: `.cache/post-rollout-summary.json`. Published images were independently revision-verified earlier; the deployed API/router/portal digests are still not exposed by these checks, so behavior is not a full revision attestation.
+- Next implementation priority: isolated HörGeschenk website worktree and one consistent referral/identity/payment flow, durable retry deduplication, one-time revenue and refund behavior. Then actual sandbox partner/referral/provider end-to-end acceptance. Program commission/window/payout policy needs user choices in its later administration workstream. Storage persistence, PR #7 configuration review and broader partner/browser acceptance remain tracked separately.

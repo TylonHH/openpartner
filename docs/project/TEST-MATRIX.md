@@ -12,13 +12,13 @@ Status vocabulary: **passed** (specific executed check), **failed** (reproduced 
 | Automated runtime checks | API, router, SDK and portal suites; pass/fail/skip counts recorded | Main 546/546; combined PR preview 554/554 in 54 files, no reported skips |
 | Database tenant isolation | Non-superuser app role exists; RLS assertions execute | Passed in combined preview; nine multi-tenant cases, no missing-role warning |
 | Production build | Every workspace builds | Initial main SDK declarations failed; fixed by merged PR #14. Final main `fe89fbd` CI and combined preview pass all workspace builds |
-| Image publication | API/router/portal images exist and revision labels match final main | Passed for `latest` and `sha-fe89fbd` at `fe89fbdb54f93d540014748e16dc29ba8ab06837`; final main CI passed. CapRover rollout remains pending |
+| Image publication | API/router/portal images exist and revision labels match final main | Passed for `latest` and `sha-fe89fbd` at `fe89fbdb54f93d540014748e16dc29ba8ab06837`; final main CI passed. User reports rollout; smoke checks pass, exact deployed digests still unexposed |
 | Dependency audit | High/critical production advisories recorded | Passed at high threshold; 2 low/17 moderate remain |
 | Public deployment | Portal 200, API health 200 on verified current origins | Passed again after user-reported redeployment; deployed revision unknown |
 | API-key auth | Live whoami reports admin/env; admin/program reads succeed | Passed |
 | Magic-link delivery | Own AgentMail inbox receives admin invitation | Passed |
 | Magic-link browser login | Fresh context, named session, portal navigation, no unexpected errors | Passed again after redeployment; named admin and seven pages verified; first invitation anomaly still unresolved |
-| Token lifecycle | Used token rejected, signout removes access and cookie | Post-deployment token rejection/access revocation passed; blank cookie still persists for 30 days, PR #13 not effective yet |
+| Token lifecycle | Used token rejected, signout removes access and cookie | Passed after latest rollout: UI signout 200, whoami 401, session cookie absent, clearing header without Max-Age, reused token 400. PR #13 fix is effective |
 | Program read access | Bearer/session agree on the existing program | Passed; same one program |
 | Stripe sandbox access | Test key authenticates; existing endpoint subscriptions inspected | Passed, livemode=false; Checkout completion subscription now verified, sandbox/prod signing-secret aliases provided |
 | Stripe live reads | Live key authenticates; existing endpoint subscriptions inspected without mutations | Passed, livemode=true; enabled PROD destination includes Checkout completion; account differs from sandbox |
@@ -48,7 +48,7 @@ Run mutating cases against local fixtures/staging with test Stripe keys. Live pr
 | Payout readiness | Approval, cadence, currency, funding interlocks, accounting; test Connect/manual rail | Pending; no production payout execution |
 | Consent/privacy | No optional referral storage/requests before applicable consent; revocation, safe identifiers | Pending |
 | Security | Tenant/partner boundaries, CSRF/CORS, signature failures, invalid inputs, export authorization | Partial; local automated suite and RLS passed, full deployed acceptance pending |
-| Storage/deployment | Upload persistence through restart, permissions, proxy/CORS/cookie configuration, pinned image versions | Pending |
+| Storage/deployment | Upload persistence through restart, permissions, proxy/CORS/cookie configuration, pinned image versions | Partial; user reports published-image rollout, portal proxy/login/cookie smoke checks pass. Upload persistence, full configuration and exact deployed digests remain pending |
 | Compatibility | Chrome/mobile, Firefox/Safari behavior where available; existing landing/demo/invoice flows | Pending |
 
 Update this matrix after each meaningful executed check. Link reproducible evidence and PRs from `STATUS.md`; do not put credentials or personal customer records here.
