@@ -70,6 +70,17 @@ beforeEach(async () => {
 });
 
 describe.skipIf(skipIntegration)('api integration', () => {
+  it('persists partner Network visibility across unrelated settings saves', async () => {
+    const initial = await request(app).get('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`);
+    expect(initial.body.partnerNetworkVisible).toBe(true);
+    const saved = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ partnerNetworkVisible: false });
+    expect(saved.status).toBe(200);
+    expect(saved.body.partnerNetworkVisible).toBe(false);
+    const other = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ programName: 'Brand' });
+    expect(other.body.partnerNetworkVisible).toBe(false);
+    const invalid = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ partnerNetworkVisible: 'false' });
+    expect(invalid.status).toBe(400);
+  });
   it('full funnel: partner → link → click → identify → event → attribution → payout', async () => {
     // 1. Admin creates a partner.
     const partnerRes = await request(app)
