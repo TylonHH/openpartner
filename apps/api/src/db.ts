@@ -22,7 +22,7 @@ import './env.js';
 import { createDb } from '@openpartner/db';
 
 const adminUrl = process.env.DATABASE_URL;
-const rawAppUrl = process.env.DATABASE_URL_APP ?? adminUrl;
+const rawAppUrl = process.env.DATABASE_URL_APP?.trim() || adminUrl;
 
 if (!adminUrl) {
   throw new Error('DATABASE_URL must be set');
