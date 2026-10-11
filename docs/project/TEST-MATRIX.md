@@ -11,7 +11,8 @@ Status vocabulary: **passed** (specific executed check), **failed** (reproduced 
 | Static quality | Shared DB build, lint and typecheck | Passed; five existing lint warnings |
 | Automated runtime checks | API, router, SDK and portal suites; pass/fail/skip counts recorded | Main 546/546; combined PR preview 554/554 in 54 files, no reported skips |
 | Database tenant isolation | Non-superuser app role exists; RLS assertions execute | Passed in combined preview; nine multi-tenant cases, no missing-role warning |
-| Production build | Every workspace builds | Main fails SDK declaration generation; combined preview and PR #14 CI pass |
+| Production build | Every workspace builds | Initial main SDK declarations failed; fixed by merged PR #14. Final main `fe89fbd` CI and combined preview pass all workspace builds |
+| Image publication | API/router/portal images exist and revision labels match final main | Passed for `latest` and `sha-fe89fbd` at `fe89fbdb54f93d540014748e16dc29ba8ab06837`; final main CI passed. CapRover rollout remains pending |
 | Dependency audit | High/critical production advisories recorded | Passed at high threshold; 2 low/17 moderate remain |
 | Public deployment | Portal 200, API health 200 on verified current origins | Passed again after user-reported redeployment; deployed revision unknown |
 | API-key auth | Live whoami reports admin/env; admin/program reads succeed | Passed |

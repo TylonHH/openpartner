@@ -1,5 +1,7 @@
 # Project status
 
+Latest image publication, 2026-10-11: origin PRs #12–#14 are merged into `main` at `fe89fbd`. Final main CI and all image builds passed; API, router and portal are published as `sha-fe89fbd` and `latest`, with matching revision labels verified. CapRover deployment and full HörGeschenk integration remain pending. Evidence is in the final section.
+
 All dates use Europe/Berlin. Read this document at the start of the next task.
 
 Latest deployment check, 2026-10-11: PROD webhook signatures accepted; SANDBOX, wrong and missing signatures rejected. Magic-link login and seven portal pages passed. Logout cookie regression remains present; full provider/website integration acceptance remains open. Details are in the final section.
@@ -108,3 +110,13 @@ Published [getcoherence/openpartner PR #86](https://github.com/getcoherence/open
 - Upstream production audit exits 1: 3 low, 23 moderate, 3 high and 1 critical findings. This is the pre-existing dependency baseline, separately addressed by [upstream PR #85](https://github.com/getcoherence/openpartner/pull/85); it is not folded into the cookie change.
 - Upstream Actions run [38145677671](https://github.com/getcoherence/openpartner/actions/runs/38145677671) reports `action_required`; its public page explicitly confirms that it awaits maintainer approval. Full upstream CI is not reported as passed. External Semgrep scan passed.
 - Private evidence is in `.cache/validation/upstream-cookie/`. Stopped the owned test database after verification. No merge, deployment, financial operation or historical-branch cleanup performed.
+
+## 2026-10-11 — Authorized origin merge and image publication
+
+The user explicitly requested merging the reviewed fixes into origin main and publishing images for their own CapRover deployment. Merged only PRs #12, #13 and #14 with merge commits and verified expected head SHAs. Historical branches, PR #7, project-management PR #15 and upstream PR #86 are preserved. Final main is `fe89fbdb54f93d540014748e16dc29ba8ab06837`; its tree exactly matches combined preview `2d470ed`, which already passed 554 local tests including RLS and all workspace builds.
+
+- [CapRover image build 38146326610](https://github.com/TylonHH/openpartner/actions/runs/38146326610): all three image jobs passed. Cancelled the superseded intermediate-main image runs to prevent older revisions overwriting rolling tags.
+- Public GHCR checks: both `latest` and `sha-fe89fbd` return HTTP 200 for API, router and portal. All six image config revision labels match final main `fe89fbdb54f93d540014748e16dc29ba8ab06837`. Recorded their digests in ignored `.cache/image-release-fe89fbd.json`.
+- Deployable tags: `ghcr.io/tylonhh/openpartner-api:sha-fe89fbd`, `ghcr.io/tylonhh/openpartner-router:sha-fe89fbd`, and `ghcr.io/tylonhh/openpartner-portal:sha-fe89fbd`. Prefer these commit-specific tags over a rolling tag for the user's rollout.
+- Final [main CI 38146326498](https://github.com/TylonHH/openpartner/actions/runs/38146326498) passed all four jobs: typecheck/test and API/router/portal builds. Frozen installation, migrations, lint, typecheck and all workspace builds passed. Vitest reports 554 passed tests in 54 files (API 528/49, SDK 11/2, router 3/1, portal 12/2), but the existing CI fixture lacks a suitable app role and logs that RLS assertions were skipped. Actual RLS coverage is established by the previously verified identical local preview, not this CI count. Audit: 2 low, 17 moderate, zero high/critical. Private final CI log: `.cache/main-ci-fe89fbd.log`.
+- No CapRover deployment or runtime secret change was made. The images include the three bug/build fixes; the full HörGeschenk/Stripe attribution, revenue, retry and refund integration remains open.

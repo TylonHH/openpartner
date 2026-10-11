@@ -65,6 +65,14 @@ Restart an existing verified fixture with `rtk proxy docker start openpartner-co
 
 Update this skill when the test procedure changes or a repeatable failure gets a verified resolution.
 
+## Authorized main merges and image publication
+
+When the user explicitly authorizes a main merge and image build, verify each intended PR's head SHA, mergeability and checks. Merge only those PRs with `gh pr merge --merge --match-head-commit <SHA>`; do not delete historical branches. Preserve the project-management PR and unrelated deployment PRs unless they are separately authorized.
+
+Each main push triggers both CI and `Build CapRover images`. For several consecutive merges, cancel superseded CapRover image runs so an older build cannot overwrite `latest` after the final build. Wait for final-head CI and image publication; intermediate cancellation is not a final-head failure. Compare the final main tree with any previously tested combined preview before deciding whether local tests need repeating.
+
+Verify all three public GHCR images (`tylonhh/openpartner-api`, `openpartner-router`, `openpartner-portal`) using the anonymous registry pull token and OCI manifests/configs. For both `latest` and `sha-<first-seven-commit-characters>`, require HTTP 200 and an `org.opencontainers.image.revision` label matching the full final main SHA. Record the resolved digest for each tag. CI and CapRover builds can produce different digests for the same revision because their metadata/provenance differ; verify labels rather than assuming identical digests. Give the user the verified SHA tags for deployment. Image publication does not establish website integration or authorize CapRover deployment.
+
 ## Authorized original-upstream contributions
 
 Origin remains the default target. When the user explicitly requests submission to `getcoherence/openpartner`, fetch `upstream/main`, compare the affected files and check existing upstream PRs for duplicates. Create a separate worktree/branch from that upstream base and cherry-pick only the focused fix commit; do not submit the fork's deployment, dependency or project-management history.

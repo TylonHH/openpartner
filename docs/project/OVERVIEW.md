@@ -41,7 +41,7 @@ Three confirmed findings have focused origin PRs, each with passing GitHub CI:
 - Logout passes creation cookie options, including `maxAge`, to Express `clearCookie`. The server revokes the session, but the browser receives a blank cookie with a new 30-day lifetime. Confirmed both in the live browser and in a local Express probe. Clear operations must preserve scope/security options while removing lifetime options across all session types.
 - The SDK declaration build fails with TypeScript 6 because tsup supplies deprecated `baseUrl`. [PR #14](https://github.com/TylonHH/openpartner/pull/14) scopes the compatibility option to declaration generation and adds a full build to CI.
 
-[PR #12](https://github.com/TylonHH/openpartner/pull/12) fixes only blank/whitespace app-URL fallback. [PR #13](https://github.com/TylonHH/openpartner/pull/13) clears session cookies across tenant, platform and operator routes. These PRs are reviewable; no production deployment or merge has been performed.
+[PR #12](https://github.com/TylonHH/openpartner/pull/12) fixes only blank/whitespace app-URL fallback. [PR #13](https://github.com/TylonHH/openpartner/pull/13) clears session cookies across tenant, platform and operator routes. The user authorized merging these fixes and PR #14 on 2026-10-11; final origin main `fe89fbd` contains all three. Main CI and image builds passed. Published API/router/portal images have verified `latest` and `sha-fe89fbd` tags. CapRover rollout is still pending; see `STATUS.md` for evidence and CI's skipped RLS assertions.
 
 ## Branch inventory, 2026-10-11
 
