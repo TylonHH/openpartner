@@ -8,6 +8,7 @@ import { api, currentTenantSlug } from '../api.js';
  * computed server-side.
  */
 export interface ProgramSettings {
+  routerUrl?: string | null;
   partnerNetworkVisible?: boolean;
   programName: string | null;
   supportEmail: string | null;
@@ -21,6 +22,7 @@ export interface ProgramSettings {
 export const DEFAULT_BRAND = 'OpenPartner';
 
 export interface Brand {
+  routerUrl: string | null;
   partnerNetworkVisible: boolean;
   /** Brand name with the platform fallback applied — never empty. When
    *  not white-label this resolves to 'OpenPartner', so existing
@@ -61,6 +63,7 @@ export function useBrand(): Brand {
     logoUrl: data?.logoUrl ?? null,
     supportEmail: data?.supportEmail || null,
     whiteLabel: data?.whiteLabel ?? false,
+    routerUrl: data?.routerUrl ?? null,
     partnerNetworkVisible: data?.partnerNetworkVisible ?? true,
     isLoading,
   };
@@ -68,6 +71,7 @@ export function useBrand(): Brand {
 
 /** Shape of the public `GET /branding` bootstrap (no auth). */
 export interface PublicBranding {
+  routerUrl?: string | null;
   partnerNetworkVisible?: boolean;
   /** Slug of the tenant resolved for the request — on a prefix-less call
    *  it's non-null only when the HOST resolved it (custom domain), or
@@ -113,6 +117,7 @@ export function usePublicBrand(): Brand & {
     faviconUrl: data?.faviconUrl ?? null,
     supportEmail: data?.supportEmail || null,
     whiteLabel: data?.whiteLabel ?? false,
+    routerUrl: data?.routerUrl ?? null,
     partnerNetworkVisible: data?.partnerNetworkVisible ?? true,
     brandColor: data?.brandColor ?? null,
     tenantSlug: data?.tenantSlug ?? null,
