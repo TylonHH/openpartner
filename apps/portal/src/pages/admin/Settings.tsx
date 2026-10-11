@@ -16,6 +16,7 @@ interface PayoutSettings {
 
 interface ProgramSettings {
   routerUrl: string | null;
+  partnerNetworkVisible: boolean;
   programName: string | null;
   supportEmail: string | null;
   logoUrl: string | null;
@@ -163,6 +164,7 @@ function ProgramSection() {
   });
 
   const [routerUrl, setRouterUrl] = useState('');
+  const [partnerNetworkVisible, setPartnerNetworkVisible] = useState(true);
   const [programName, setProgramName] = useState('');
   const [supportEmail, setSupportEmail] = useState('');
   const [brandColor, setBrandColor] = useState('');
@@ -172,6 +174,7 @@ function ProgramSection() {
   useEffect(() => {
     if (!data) return;
     setRouterUrl(data.routerUrl ?? '');
+    setPartnerNetworkVisible(data.partnerNetworkVisible ?? true);
     setProgramName(data.programName ?? '');
     setSupportEmail(data.supportEmail ?? '');
     setBrandColor(data.brandColor ?? '');
@@ -182,7 +185,7 @@ function ProgramSection() {
     mutationFn: () =>
       api<ProgramSettings>('/config/program', {
         method: 'POST',
-        body: { programName, supportEmail, brandColor, programTermsUrl, routerUrl },
+        body: { programName, supportEmail, brandColor, programTermsUrl, partnerNetworkVisible, routerUrl },
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['program-settings'] });
@@ -278,6 +281,13 @@ function ProgramSection() {
         <Label>Public router URL</Label>
         <Input type="url" value={routerUrl} onChange={(e) => setRouterUrl(e.target.value)} placeholder="https://links.yourdomain.com" maxLength={2048} />
         <Hint>Public origin serving /r links. Required for complete share links on single-tenant self-host installations.</Hint>
+      </div>
+      <div style={{ marginBottom: 16 }}>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="checkbox" checked={partnerNetworkVisible} onChange={(e) => setPartnerNetworkVisible(e.target.checked)} />
+          Show Network in the partner portal
+        </label>
+        <Hint>Controls partner navigation and portal pages. Your brand's Network connection and admin access remain available.</Hint>
       </div>
       <Row>
         <Button onClick={() => mut.mutate()} disabled={mut.isPending}>

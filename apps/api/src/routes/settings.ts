@@ -59,6 +59,7 @@ const settingsSchema = z.object({
         url.pathname === '/' && !url.search && !url.hash;
     } catch { return false; }
   }, 'Use an HTTP(S) origin without a path, credentials, query or fragment').optional(),
+  partnerNetworkVisible: z.boolean().optional(),
   programName: z.string().trim().max(120).optional(),
   supportEmail: z.string().trim().email().max(254).optional().or(z.literal('')),
   // Hex format mirrors the DB CHECK constraint (#RGB / #RRGGBB / #RRGGBBAA).
@@ -75,6 +76,7 @@ const settingsSchema = z.object({
  *  else is per-tenant program settings. */
 interface PersistedProgramSettings {
   routerUrl: string | null;
+  partnerNetworkVisible: boolean;
   programName: string | null;
   supportEmail: string | null;
 }
@@ -117,6 +119,7 @@ async function readSettings(db: Knex, tenantId: string): Promise<ProgramSettings
   return {
     programName,
     routerUrl: value.routerUrl ?? null,
+    partnerNetworkVisible: value.partnerNetworkVisible ?? true,
     supportEmail: value.supportEmail ?? null,
     logoUrl: tenant?.logoUrl ?? null,
     faviconUrl: tenant?.faviconUrl ?? null,
@@ -187,6 +190,7 @@ settingsRouter.post('/config/program', requireAuth, requireAdmin, async (req, re
   const previous = await readSettings(db, tenantId);
   const next: PersistedProgramSettings = {
     routerUrl: body.data.routerUrl === undefined ? previous.routerUrl : (body.data.routerUrl ? new URL(body.data.routerUrl).origin : null),
+    partnerNetworkVisible: body.data.partnerNetworkVisible ?? previous.partnerNetworkVisible,
     programName: body.data.programName?.trim() || null,
     supportEmail: body.data.supportEmail?.trim() || null,
   };
