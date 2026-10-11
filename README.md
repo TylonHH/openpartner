@@ -4,6 +4,8 @@
 
 > The open alternative to Dub Partners, Rewardful, and Impact.
 
+For this fork's HörGeschenk integration and verification work, start with the [project status](./docs/project/STATUS.md), [overview](./docs/project/OVERVIEW.md) and [acceptance matrix](./docs/project/TEST-MATRIX.md). Contributor instructions are in [AGENTS.md](./AGENTS.md).
+
 ## Why OpenPartner
 
 Existing partner platforms have two problems:
