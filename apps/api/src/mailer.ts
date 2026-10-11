@@ -27,7 +27,9 @@ import nodemailer from 'nodemailer';
 import { resolveMailConfig } from './mail-settings.js';
 import { resolveBrandName } from './brand-name.js';
 import { getWhiteLabelState } from './white-label.js';
-import { TABLES, type ConfigRow } from '@openpartner/db';
+import { brandEmailHtml } from './email-branding.js';
+import { plainHtml } from './email-templates.js';
+import { TABLES, type ConfigRow, type TenantRow } from '@openpartner/db';
 
 export interface Message {
   to: string;
@@ -66,6 +68,10 @@ function extractAddress(from: string): string {
 class RoutingMailer implements Mailer {
   async send(ctx: SendContext, msg: Message): Promise<void> {
     const cfg = await resolveMailConfig(ctx.db, ctx.tenantId);
+    const tenant = await ctx.db<TenantRow>(TABLES.Tenant)
+      .where({ id: ctx.tenantId })
+      .first(['brandColor']);
+    const html = brandEmailHtml(msg.html ?? plainHtml(msg.text), tenant?.brandColor ?? null);
 
     // Brand-aware From + Reply-To when we're using the platform fallback
     // (source='env'). Pattern: `"Acme via OpenPartner" <noreply@openpartner.dev>`,
@@ -134,7 +140,7 @@ class RoutingMailer implements Mailer {
         replyTo,
         subject: msg.subject,
         text: msg.text,
-        html: msg.html,
+        html,
         headers: msg.tag ? { 'X-Tag': msg.tag } : undefined,
       });
       return;
@@ -153,7 +159,7 @@ class RoutingMailer implements Mailer {
           ReplyTo: replyTo,
           Subject: msg.subject,
           TextBody: msg.text,
-          HtmlBody: msg.html,
+          HtmlBody: html,
           Tag: msg.tag,
           MessageStream: cfg.postmark.messageStream,
           Metadata: msg.metadata,
