@@ -1,40 +1,64 @@
 # Project status
 
-All dates use Europe/Berlin. This document is the working handoff for the OpenPartner project.
+All dates use Europe/Berlin. Read this document at the start of the next task.
 
-## 2026-10-11 — Initialization in progress
+## 2026-10-11 — Initialization completed; integration remains open
 
-Request: initialize and manage `TylonHH/openpartner` in `F:\_CODEX\_OpenPartner`, test the full application, create origin PRs for confirmed improvements/bugs, and prepare integration with Stripe and HörGeschenk. Maintain progress and reusable skills. Affiliate program administration follows later.
+Scope: manage `TylonHH/openpartner`, verify the affiliate flow, create focused origin PRs, and integrate Stripe with HörGeschenk. Program administration follows later.
 
-- Initialized the previously empty checkout around the existing private `.env`; fetched all origin branches. Base `origin/main`: `1b7354d3921d7314e0dd054526fd1b1851a0a607`.
-- Current working branch: `codex/project-initialization`. Added upstream as a comparison remote. No historical branch was deleted or merged.
-- Root `.env` contains `ADMIN_API_KEY`; user subsequently added `agentmail_api`. Values are private and remain ignored.
-- Found 13 origin branches and one open PR, [#7](https://github.com/TylonHH/openpartner/pull/7). It is 3 commits ahead and 12 behind main. Its failed CI step is the dependency audit on its older base; current main CI and CapRover image publication pass.
-- Local tools: Node `26.10.0`, pnpm `9.15.4`, Docker `29.8.0`, RTK `0.48.0`. CI uses Node 22 and pnpm 9.11.0. Local results must record that version difference.
-- Dedicated test database: owned container `openpartner-codex-test-db`, PostgreSQL 16, loopback `127.0.0.1:55433`, database `openpartner_test`. Never use the production database for the truncating suites.
-- Verified production portal `https://affiliate.warsowerk.de` (200) and API `https://affiliate-api.warsowerk.de/health` (200). `https://go.warsowerk.de/` responds 404, which alone does not test a referral link. Old `*.hoerbuch.warsowerk.de` affiliate hosts failed to connect.
-- Private bearer `/auth/whoami`: 200, role admin, source env. `/admins`: one existing active admin before the test; `/programs`: one program.
-- User authorized the project's own AgentMail mailbox. Created inbox `embarrassedorder41@agentmail.to`, client ID `openpartner-codex`, and named admin `Codex OpenPartner (AgentMail)` through the existing invitation API. Invitation delivered from HörGeschenk. The first invite browser attempt reported `invalid_or_expired_token` despite the admin becoming activated; the exact cause is not yet established. A separately requested normal signin link subsequently passed in a clean Chromium context: whoami 200, role admin, source session, expected named admin.
-- Live session and bearer reads return the same one program. Dashboard, Programs, Partners, Links, Commissions, Payouts and Settings render without page exceptions. The identity switcher probes `/me/workspaces` and receives 401 for a missing platform session; source handles that as an empty workspace list, so this is not a failed admin permission check.
-- A consumed magic link returns 400 `invalid_or_expired_token`. UI signout redirects to `/login`; whoami then returns 401. However, a blank `op_session` cookie remains. Reproduced locally with installed Express: `clearCookie` receives `maxAge=2592000` and sets an empty cookie expiring 30 days later. A focused fix and regression test are planned; the original authenticated session is revoked.
-- Frozen installation, database migrations, lint and typecheck pass. Lint reports five pre-existing unused-variable warnings. Initial Node 26 SDK tests fail because native storage shadows jsdom; the Node 22 run passes SDK/router/portal tests. A first database run exposed `DATABASE_URL_APP=''` selecting pg's default localhost:5432; the runner now pins both URLs to the fixture and the corrected full baseline is running.
-- The empty app URL issue also exists in application code and is triggered by `.env.example`'s optional blank variable. Before the fix: reproduce URL selection with a mocked connection factory, then make a focused origin PR. Do not change the migration/database-role architecture.
-- Production dependency audit: 19 advisories (2 low, 17 moderate), zero high/critical; command exits successfully at the configured high threshold. These findings remain tracked rather than described as an entirely clean audit.
-- Corrected Node 22 baseline initially reported 544 passing tests and two funding-sweep failures (`funding-races.test.ts`, per-run limit/advance checks). All 62 tests in that file then passed in a targeted rerun. The full baseline is being repeated to establish whether the result depends on suite/database state; do not silently classify the first two failures as passed.
-- Related checkout `F:\_CODEX\_AudioBook\TEST_website` contains extensive unpublished changes and a stale local main. Preserve it. Fetched website origin main is `9d9da2583ef2fa9d1d78f025bebbdd8bd41e96ce`. Current server/client/docs/environment example contain no OpenPartner wiring.
+### Checkout and branch inventory
 
-## Next work
+- Initialized `F:\_CODEX\_OpenPartner` around the existing private `.env`. Base `origin/main`: `1b7354d3921d7314e0dd054526fd1b1851a0a607`. Working branch: `codex/project-initialization`; comparison remote: `getcoherence/openpartner`.
+- Inventoried 13 original origin branches. No historical branch was deleted or merged. Ancestry counts and dispositions are in `OVERVIEW.md`.
+- Existing [PR #7](https://github.com/TylonHH/openpartner/pull/7) is 3 commits ahead and 12 behind the initial main. Its old audit failure predates main's dependency fixes. Storage, domains and optional RLS configuration belong in that separate review.
+- Created root `AGENTS.md`, architecture/integration overview, acceptance matrix, isolated validation runner, and skills for validation and AgentMail magic login.
+- Related `F:\_CODEX\_AudioBook\TEST_website` has extensive unpublished work and a stale local main. Preserved all edits. Fetched website origin main: `9d9da2583ef2fa9d1d78f025bebbdd8bd41e96ce`; no OpenPartner wiring found in current server/client/docs/environment example. Use an isolated worktree for integration.
 
-1. Complete local baseline, record passed/failed/skipped tests and builds.
-2. Complete real AgentMail magic-link login and read-only portal smoke checks, then sign out.
-3. Publish the initialization PR with project instructions, repeatable validation and current findings.
-4. Inspect PR #7 against current main; reconcile CapRover configuration/documentation in a separate focused change.
-5. Verify deployed image revisions and obtain test Stripe configuration. Use `TEST-MATRIX.md` to work through website attribution, payment delivery and refund/payout cases.
+### Verification and origin PRs
 
-## Pending environment/input
+Local reference: Node 22.20.0, pnpm 9.15.4, PostgreSQL 16.15. Host Node is 26.10.0; CI uses Node 22 and pnpm 9.11.0. Docker 29.8.0 and RTK 0.48.0 are available.
 
-- Exact deployed API/router/portal image digests or commit IDs; public `/health` does not expose a deployed revision.
-- Dedicated Stripe test-mode API key and OpenPartner endpoint-specific `STRIPE_WEBHOOK_SECRET_PLATFORM` for actual provider delivery tests. Add to a private test environment, separate from live `.env` credentials.
-- Confirm website/API/router origin and staging URLs before mutating integration tests. Obtain only the configuration required for the chosen stage; production database credentials are not needed for local baseline tests.
+- Frozen dependency installation, shared DB build, migrations, lint and typecheck passed. Five existing lint warnings remain.
+- Corrected main baseline: **546 tests passed in 53 files** (API 520, SDK 11, router 3, portal 12). That initial fixture lacked the app role, so its RLS assertion coverage was not counted.
+- Fresh owned fixture now provisions `openpartner_app` with a distinct local password, LOGIN, no SUPERUSER and no BYPASSRLS. The combined validation preview runs all three fixes: **554 tests passed in 54 files** (API 528/49 files, SDK 11/2, router 3/1, portal 12/2), including all nine multi-tenant suite cases with the app role present and no missing-role warning. No Vitest skips reported; DB package has no tests.
+- Combined preview at local commit `2d470ed`: every workspace production build passed, including SDK ESM/CommonJS and declarations. Preview is a local worktree/branch, not a deployment.
+- Production dependency audit: 19 advisories, 2 low and 17 moderate; zero high/critical. Passed the configured high threshold.
+- [PR #12](https://github.com/TylonHH/openpartner/pull/12), commit `3c3b178`: blank/whitespace optional `DATABASE_URL_APP` falls back to the primary URL. Five connection-factory tests; two reproduced failures before the fix.
+- [PR #13](https://github.com/TylonHH/openpartner/pull/13), commit `463d257`: expire cookies on tenant/platform/operator logout and identity changes. Shared helper preserves scope/security attributes but removes lifetime options. Regression failed before the fix; actual route regressions and invitation suites pass.
+- [PR #14](https://github.com/TylonHH/openpartner/pull/14), commit `82a71fa`: fix SDK TypeScript 6 declaration generation and add full builds to CI. TypeScript 7 will require tsup to stop injecting deprecated `baseUrl`.
+- All four GitHub checks on each of PRs #12, #13 and #14 passed: typecheck/test and API/router/portal Docker builds. PR #14's CI also verifies all workspace builds. No merge or production rollout performed.
+- Private reproduction logs: `.cache/validation/preview-test.log` and `preview-build.log`. They contain dummy fixture identities/tokens and stay ignored.
 
-No claim of full end-to-end or payout readiness is made while these checks remain open.
+Earlier failures remain recorded: Node 26's native storage shadows jsdom in SDK tests; Node 22 resolves the environment mismatch. A blank app URL made pg use localhost:5432; the application fix is PR #12. One corrected baseline run had 544 passes and two funding-sweep per-run limit/advance failures; all 62 tests in that file then passed, followed by the 546-test main run and 554-test combined run. The intermittent funding cause is unresolved; no speculative financial fix was applied.
+
+### Live authentication and deployment reads
+
+- Verified portal `https://affiliate.warsowerk.de` and API `https://affiliate-api.warsowerk.de/health`: 200. Router `https://go.warsowerk.de/`: 404; root alone does not test referral routing. Old affiliate hosts under `hoerbuch.warsowerk.de` failed to connect.
+- Production bearer whoami: admin/source env. One existing active admin and one program before login testing.
+- User authorized own AgentMail inbox. Created/reuse `embarrassedorder41@agentmail.to`, client ID `openpartner-codex`, named admin `Codex OpenPartner (AgentMail)`. Invitation delivered from HörGeschenk. This account remains available for project management.
+- First invitation browser attempt returned `invalid_or_expired_token` despite admin activation; exact cause unresolved. A separately requested regular signin link passed in clean Chromium: admin/source session and the expected named admin.
+- Bearer/session reads agree on the one program. Dashboard, Programs, Partners, Links, Commissions, Payouts and Settings render without page exceptions. Identity switcher's expected missing-platform-session 401 is handled.
+- Reused token rejected with 400; UI signout redirects to login and whoami becomes 401. Live blank `op_session` still had a 30-day lifetime; local Express reproduction confirmed the cookie issue fixed in PR #13. This fix is not yet deployed. Browser session closed after signout.
+- Named session and environment bearer intentionally differ in identity-dependent features; primary portal login remains magic link.
+
+### Optional RLS and Stripe sandbox
+
+User clarification and original upstream confirm: `DATABASE_URL_APP` is optional RLS hardening. `DATABASE_URL` and the app URL target the same database using different roles/passwords. `OPENPARTNER_APP_DB_PASSWORD` provisions the app-role password. `OPENPARTNER_OUTBOUND_ALLOWED_PORTS=80,443` is separate outbound hardening. PR #12 retains every nonempty app URL; no production credential/configuration changes made.
+
+User supplied `STRIPE_SECRET_KEY_SAND` in ignored `.env.integration.local`. Confirmed test-key format and successful Stripe balance read with `livemode=false`. Read existing webhook destinations; no Stripe resource was created or modified:
+
+- OpenPartner test destination `https://affiliate-api.warsowerk.de/webhooks/stripe` is enabled, but **does not subscribe to `checkout.session.completed`**. Current source relies on that event for Checkout click/customer stitching. Review and correct subscriptions as part of integration; do not claim Checkout attribution works now.
+- Website test destination `https://audiobook-dev.caprover.drrene.de/api/stripe/webhook/hoergeschenk` includes Checkout and invoice/subscription events.
+- Existing n8n test destination also receives Checkout completion. Preserve invoice workflow.
+- No `STRIPE_WEBHOOK_SECRET_PLATFORM` is present in the local integration file. API authentication is verified; signed delivery and end-to-end financial behavior remain unverified.
+
+### Next work and missing input
+
+1. Reproduce the first invitation anomaly and investigate funding flakiness if it recurs.
+2. Verify deployed API/router/portal commits or image digests; health does not expose revision.
+3. Review PR #7 against current main and reconcile CapRover storage/domains/configuration separately.
+4. In an isolated website worktree, choose one existing attribution mechanism. Preserve customer `?ref` credits, consent, user/customer identity, n8n invoices and existing checkout. Verify one-time revenue and durable retry deduplication.
+5. Complete `TEST-MATRIX.md` using the sandbox key. Add the OpenPartner endpoint-specific test signing secret to the private integration file when signed provider delivery is needed. Website signing secret is separate.
+6. Review/merge and deploy only under a concrete rollout instruction.
+
+No claim of full live end-to-end functionality or payout readiness is made. No production payment, transfer, refund or affiliate program policy change was triggered.

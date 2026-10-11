@@ -11,7 +11,9 @@ Use this workflow for a fresh checkout, changes to runtime code, or regression v
 
 Never load production database, Stripe or mail credentials into destructive tests. Preserve root `.env`. `scripts/validate-local.mjs` pins a loopback test database and dummy admin/encryption keys in its child processes. It overrides integration credentials, including empty values so dotenv does not reload production Stripe/mail settings. The caller's environment stays unchanged. Do not replace its fixture URL with a remote connection.
 
-Both `DATABASE_URL` and `DATABASE_URL_APP` must point to the fixture. The current app selects the app URL with nullish fallback: an empty string causes PostgreSQL to use its default localhost:5432 rather than the fixture. This baseline uses the privileged fixture role, like CI; separate RLS/app-role cases are still required.
+Both `DATABASE_URL` and `DATABASE_URL_APP` must point to the fixture. Original main selects the app URL with nullish fallback: an empty string causes PostgreSQL to use its default localhost:5432 rather than the fixture. PR #12 fixes that optional-value behavior; pin both URLs regardless. This baseline uses the privileged fixture role, like CI; the multi-tenant suite separately drops privileges with `SET LOCAL ROLE openpartner_app` for RLS assertions.
+
+The runner pins `OPENPARTNER_APP_DB_PASSWORD=op_app_local_fixture_only` for first migration so the non-superuser `openpartner_app` role is provisioned with a distinct fixture password. Existing migration history will not rerun a previously skipped app-role migration. For an old disposable fixture, deliberately recreate only its test database and rerun migrations, or provision that role through the existing migration code. Do not infer RLS coverage from Vitest's pass count: `multi-tenant.test.ts` can return before assertions when the role is absent. Confirm the role exists with LOGIN, no SUPERUSER and no BYPASSRLS, and that the missing-role warning does not occur.
 
 Install dependencies once:
 

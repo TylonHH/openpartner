@@ -35,10 +35,13 @@ These differences do not establish a bug. Compare actual UI behavior and permiss
 
 Live regular signin passes in Chromium and renders the expected named admin. Programs match bearer access. Dashboard, Programs, Partners, Links, Commissions, Payouts and Settings render. The first invitation attempt returned an invalid-token message despite activation; it needs a separate reproduction before assigning a cause.
 
-Two confirmed runtime findings require focused fixes:
+Three confirmed findings have focused origin PRs, each with passing GitHub CI:
 
 - `apps/api/src/db.ts` uses nullish fallback for `DATABASE_URL_APP`, so an optional empty value (as in `.env.example`) selects an empty connection and pg defaults to localhost:5432. Both fixture URLs are pinned while reproducing the application case separately.
 - Logout passes creation cookie options, including `maxAge`, to Express `clearCookie`. The server revokes the session, but the browser receives a blank cookie with a new 30-day lifetime. Confirmed both in the live browser and in a local Express probe. Clear operations must preserve scope/security options while removing lifetime options across all session types.
+- The SDK declaration build fails with TypeScript 6 because tsup supplies deprecated `baseUrl`. [PR #14](https://github.com/TylonHH/openpartner/pull/14) scopes the compatibility option to declaration generation and adds a full build to CI.
+
+[PR #12](https://github.com/TylonHH/openpartner/pull/12) fixes only blank/whitespace app-URL fallback. [PR #13](https://github.com/TylonHH/openpartner/pull/13) clears session cookies across tenant, platform and operator routes. These PRs are reviewable; no production deployment or merge has been performed.
 
 ## Branch inventory, 2026-10-11
 
@@ -63,6 +66,10 @@ Counts are ancestry differences against `origin/main` (`1b7354d`), not proof a p
 PR #7 updates storage, RLS application-role configuration, outbound ports, Stripe environment and current domains. Its older CI audit failed; current main has since merged security and audit fixes. Do not treat that old result as failure of current runtime tests.
 
 ## Deployment findings
+
+`DATABASE_URL_APP` is optional RLS hardening, as the user clarified and the fetched original `getcoherence/openpartner` source confirms. `DATABASE_URL` uses the privileged migration/operator role and its database password. When RLS is configured, `DATABASE_URL_APP` uses `openpartner_app` and that role's distinct password, provisioned through `OPENPARTNER_APP_DB_PASSWORD`. Both URLs target the same database, not two separate databases. `OPENPARTNER_OUTBOUND_ALLOWED_PORTS=80,443` is outbound request hardening, independent of database credentials.
+
+Preserve this optional deployment model. A nonempty RLS URL must not be replaced by the privileged URL. PR #12 only makes empty/whitespace optional values behave like an omitted value. The original upstream has the same nullish-fallback bug. The validation fixture uses its own local privileged role for both URLs to match baseline CI and provisions a separate non-superuser app role for the suite's `SET LOCAL ROLE` isolation checks. That fixture setup is not a production credential recommendation.
 
 `main`'s CapRover README still recommends `affiliate.hoerbuch.warsowerk.de`, `affiliate-api.hoerbuch.warsowerk.de` and `go.hoerbuch.warsowerk.de`. Live probes instead found `affiliate.warsowerk.de` and `affiliate-api.warsowerk.de` reachable; `go.warsowerk.de/` returns 404. PR #7 already documents the newer domain layout. Domain/volume/env reconciliation belongs in that review, not a competing initialization change.
 

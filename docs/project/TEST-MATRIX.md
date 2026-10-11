@@ -9,15 +9,17 @@ Status vocabulary: **passed** (specific executed check), **failed** (reproduced 
 | Dependency installation | Frozen lockfile installs without edits | Passed |
 | Schema | All migrations apply to isolated PostgreSQL 16 fixture | Passed |
 | Static quality | Shared DB build, lint and typecheck | Passed; five existing lint warnings |
-| Automated runtime checks | API, router, SDK and portal suites; pass/fail/skip counts recorded | Pending |
-| Production build | Every workspace builds | Pending |
+| Automated runtime checks | API, router, SDK and portal suites; pass/fail/skip counts recorded | Main 546/546; combined PR preview 554/554 in 54 files, no reported skips |
+| Database tenant isolation | Non-superuser app role exists; RLS assertions execute | Passed in combined preview; nine multi-tenant cases, no missing-role warning |
+| Production build | Every workspace builds | Main fails SDK declaration generation; combined preview and PR #14 CI pass |
 | Dependency audit | High/critical production advisories recorded | Passed at high threshold; 2 low/17 moderate remain |
 | Public deployment | Portal 200, API health 200 on verified current origins | Passed; deployed revision unknown |
 | API-key auth | Live whoami reports admin/env; admin/program reads succeed | Passed |
 | Magic-link delivery | Own AgentMail inbox receives admin invitation | Passed |
 | Magic-link browser login | Fresh context, named session, portal navigation, no unexpected errors | Regular signin passed; first invitation attempt needs investigation |
-| Token lifecycle | Used token rejected, signout removes access | Token rejection and revoked access passed; blank cookie persists for 30 days, reproduced bug |
+| Token lifecycle | Used token rejected, signout removes access and cookie | Live rejection/access revocation passed; cookie bug fixed/tested in PR #13, deployment pending |
 | Program read access | Bearer/session agree on the existing program | Passed; same one program |
+| Stripe sandbox access | Test key authenticates; existing endpoint subscriptions inspected | Passed, livemode=false; OpenPartner destination lacks Checkout completion, signing secret absent locally |
 
 ## Full functional acceptance
 
@@ -33,15 +35,15 @@ Run mutating cases against local fixtures/staging with test Stripe keys. Live pr
 | Click router | Actual referral URL redirects, valid click stored, `_cref` and query handoff, invalid link, velocity guard | Pending; root 404 alone is not a functional check |
 | Identity | Click tied to website account or Stripe customer consistently; login/signup/cross-session handoff | Pending |
 | Signup conversion | One eligible signup reaches the intended program/partner | Pending |
-| One-time payment | Website Checkout credits remain correct; exactly one paid-revenue event and commission in EUR | Blocked for live provider test; test-mode keys/endpoint configuration needed |
-| Subscriptions | First invoice and renewals, cancellation, delayed/out-of-order events, failed payment | Blocked for live provider test |
+| One-time payment | Website Checkout credits remain correct; exactly one paid-revenue event and commission in EUR | Pending; sandbox key verified, endpoint signing secret/configuration still needed |
+| Subscriptions | First invoice and renewals, cancellation, delayed/out-of-order events, failed payment | Pending for real sandbox delivery; local mocked suites passed |
 | Idempotency | Repeated provider webhook and failed-forwarding retry produce one financial result | Pending |
 | Existing referral rewards | `?ref` customer credit awards remain distinct from affiliate commissions | Pending |
 | Refunds/disputes | Full refund reverses eligible unpaid commission; partial refund/manual review; paid commissions flagged | Pending |
 | Coupon attribution | Valid/invalid code, link+code precedence, duplicate and self referral | Pending |
 | Payout readiness | Approval, cadence, currency, funding interlocks, accounting; test Connect/manual rail | Pending; no production payout execution |
 | Consent/privacy | No optional referral storage/requests before applicable consent; revocation, safe identifiers | Pending |
-| Security | Tenant/partner boundaries, CSRF/CORS, signature failures, invalid inputs, export authorization | Pending |
+| Security | Tenant/partner boundaries, CSRF/CORS, signature failures, invalid inputs, export authorization | Partial; local automated suite and RLS passed, full deployed acceptance pending |
 | Storage/deployment | Upload persistence through restart, permissions, proxy/CORS/cookie configuration, pinned image versions | Pending |
 | Compatibility | Chrome/mobile, Firefox/Safari behavior where available; existing landing/demo/invoice flows | Pending |
 
