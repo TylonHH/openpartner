@@ -31,7 +31,7 @@ Trace changes through `apps/router`, `apps/api`, `apps/portal`, `packages/db` an
 
 ## Credentials and authentication
 
-- Root `.env` is private and currently holds production `ADMIN_API_KEY` and `agentmail_api`. Never print, commit, copy into reports or expose these values to the browser. Existing `.gitignore` excludes local environment files and `.cache`.
+- Root `.env` is private and holds production `ADMIN_API_KEY`, `agentmail_api`, and the endpoint-secret aliases `STRIPE_WHEC_PROD` / `STRIPE_WHEC_SANDBOX`. API-key aliases `STRIPE_SECRET_KEY_SAND` and `STRIPE_SECRET_KEY_PROD` are in `.env.integration.local`. Never print, commit, copy into reports or expose these values to the browser. Existing `.gitignore` excludes local environment files and `.cache`.
 - Human and agent portal login uses the email magic link as the primary method. `ADMIN_API_KEY` is a headless bootstrap/recovery credential; compare its behavior separately instead of treating it as equivalent to a named admin session.
 - The user authorizes retrieving their login mail from Gmail and using the project's own AgentMail inbox for login tests. Limit mailbox access to relevant login messages. Do not send unrelated mail.
 - AgentMail project inbox uses `client_id=openpartner-codex`. Discover/reuse it; do not create a new inbox on every task. API key remains in `.env`; login tokens and session cookies remain in memory or ignored private files only.
@@ -41,6 +41,6 @@ Trace changes through `apps/router`, `apps/api`, `apps/portal`, `packages/db` an
 
 ## Repeatable workflows
 
-Use `.agents/skills/openpartner-validation/SKILL.md` for local verification and `.agents/skills/openpartner-magic-login/SKILL.md` for the authorized mailbox/login workflow. Update a skill after its procedure changes or a recurring failure is understood. Add a skill when another workflow actually repeats; avoid speculative scaffolding.
+Use `.agents/skills/openpartner-validation/SKILL.md` for local verification, `.agents/skills/openpartner-magic-login/SKILL.md` for the authorized mailbox/login workflow, and `.agents/skills/openpartner-stripe-webhooks/SKILL.md` for secret mapping and Stripe environment checks. Update a skill after its procedure changes or a recurring failure is understood. Add a skill when another workflow actually repeats; avoid speculative scaffolding.
 
 Keep the acceptance matrix current. A green automated suite does not establish live browser correctness, Stripe delivery, refund correctness or payout readiness. Mark the integration complete only when the recorded end-to-end checks pass.

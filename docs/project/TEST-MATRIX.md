@@ -19,7 +19,10 @@ Status vocabulary: **passed** (specific executed check), **failed** (reproduced 
 | Magic-link browser login | Fresh context, named session, portal navigation, no unexpected errors | Regular signin passed; first invitation attempt needs investigation |
 | Token lifecycle | Used token rejected, signout removes access and cookie | Live rejection/access revocation passed; cookie bug fixed/tested in PR #13, deployment pending |
 | Program read access | Bearer/session agree on the existing program | Passed; same one program |
-| Stripe sandbox access | Test key authenticates; existing endpoint subscriptions inspected | Passed, livemode=false; OpenPartner destination lacks Checkout completion, signing secret absent locally |
+| Stripe sandbox access | Test key authenticates; existing endpoint subscriptions inspected | Passed, livemode=false; Checkout completion subscription now verified, sandbox/prod signing-secret aliases provided |
+| Stripe live reads | Live key authenticates; existing endpoint subscriptions inspected without mutations | Passed, livemode=true; enabled PROD destination includes Checkout completion; account differs from sandbox |
+| Hosted webhook signature | Safe unmapped Checkout probe authenticates with the deployed secret | Sandbox-secret probe 200/skipped; PROD-secret probe 400 invalid_signature; live-secret rollout pending |
+| Stripe CLI | Same sandbox account, test mode, separate listener secret | Passed; no trigger or forwarding listener left running |
 
 ## Full functional acceptance
 
@@ -35,7 +38,7 @@ Run mutating cases against local fixtures/staging with test Stripe keys. Live pr
 | Click router | Actual referral URL redirects, valid click stored, `_cref` and query handoff, invalid link, velocity guard | Pending; root 404 alone is not a functional check |
 | Identity | Click tied to website account or Stripe customer consistently; login/signup/cross-session handoff | Pending |
 | Signup conversion | One eligible signup reaches the intended program/partner | Pending |
-| One-time payment | Website Checkout credits remain correct; exactly one paid-revenue event and commission in EUR | Pending; sandbox key verified, endpoint signing secret/configuration still needed |
+| One-time payment | Website Checkout credits remain correct; exactly one paid-revenue event and commission in EUR | Pending; sandbox key, endpoint secret and Checkout subscription available; isolated provider/website flow still required |
 | Subscriptions | First invoice and renewals, cancellation, delayed/out-of-order events, failed payment | Pending for real sandbox delivery; local mocked suites passed |
 | Idempotency | Repeated provider webhook and failed-forwarding retry produce one financial result | Pending |
 | Existing referral rewards | `?ref` customer credit awards remain distinct from affiliate commissions | Pending |

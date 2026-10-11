@@ -75,6 +75,14 @@ Preserve this optional deployment model. A nonempty RLS URL must not be replaced
 
 Production health and authentication do not identify the deployed commit. Compare all three deployed image SHA/digests before relying on main's fixes. Storage persistence, permissions, API proxy, CORS and cookie domain each need explicit acceptance checks.
 
+### Stripe environment mapping, updated 2026-10-11
+
+Private local aliases are `STRIPE_WHEC_PROD` / `STRIPE_WHEC_SANDBOX` in root `.env`, and `STRIPE_SECRET_KEY_SAND` / `STRIPE_SECRET_KEY_PROD` in `.env.integration.local`. They are not runtime variable names. Map the chosen endpoint secret to `STRIPE_WEBHOOK_SECRET_PLATFORM` and the matching API key to `STRIPE_SECRET_KEY` for that application's environment. Legacy `STRIPE_WEBHOOK_SECRET` remains supported; the split platform/connect variables additionally enforce event-family boundaries.
+
+Both OpenPartner destinations are enabled and now include `checkout.session.completed`, independently verified using their corresponding API keys. Balance reads confirm test/live mode; the keys belong to different Stripe accounts. Both destinations target the same production-hosted receiver, which still accepts the sandbox secret and rejects the PROD secret: safe signed Checkout probes returned 200/skipped and 400/invalid_signature respectively. No conversion or money operation occurred. Live-secret rollout remains necessary before relying on live commissions.
+
+Stripe CLI 1.53.1 is authenticated in test mode to the same account as the sandbox key. Its listener secret differs from both Dashboard endpoint secrets. CLI forwarding must use that listener secret on an isolated local receiver; do not send CLI-signed events to a Dashboard-secret receiver expecting verification to succeed. Follow `.agents/skills/openpartner-stripe-webhooks/SKILL.md` for repeat checks.
+
 ## HörGeschenk integration review
 
 The original website checkout is dirty and must be preserved. Its previously published audience-landing worktree is at `64e2eacd`. Fetched website origin main is now `9d9da2583ef2fa9d1d78f025bebbdd8bd41e96ce`; the intervening commits update audiobook duration and SEO checks. A search of current origin's `server`, `client`, `docs` and `.env.example` finds no `openpartner`, `client_reference_id` or `openpartner_user_id`. Existing Stripe checkout/customer metadata (`userId`), invoice handoff and customer referral credits remain the integration starting points. Create an isolated worktree from current origin before edits.

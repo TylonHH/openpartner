@@ -59,7 +59,22 @@ User supplied `STRIPE_SECRET_KEY_SAND` in ignored `.env.integration.local`. Conf
 2. Verify deployed API/router/portal commits or image digests; health does not expose revision.
 3. Review PR #7 against current main and reconcile CapRover storage/domains/configuration separately.
 4. In an isolated website worktree, choose one existing attribution mechanism. Preserve customer `?ref` credits, consent, user/customer identity, n8n invoices and existing checkout. Verify one-time revenue and durable retry deduplication.
-5. Complete `TEST-MATRIX.md` using the sandbox key. Add the OpenPartner endpoint-specific test signing secret to the private integration file when signed provider delivery is needed. Website signing secret is separate.
+5. Complete `TEST-MATRIX.md` using the sandbox key and the provided sandbox signing-secret alias described below. Website signing secret is separate.
 6. Review/merge and deploy only under a concrete rollout instruction.
 
 No claim of full live end-to-end functionality or payout readiness is made. No production payment, transfer, refund or affiliate program policy change was triggered.
+
+## 2026-10-11 — Stripe secrets and subscription follow-up
+
+The user added `checkout.session.completed` to PROD and SANDBOX destinations and stored `STRIPE_WHEC_PROD` / `STRIPE_WHEC_SANDBOX` in private root `.env`. The production-hosted application still uses the sandbox endpoint secret. Stripe CLI is installed and logged in for sandbox work.
+
+- Verified both provided values have signing-secret format and differ, without exposing them. These names are local aliases; runtime code reads `STRIPE_WEBHOOK_SECRET_PLATFORM`, `STRIPE_WEBHOOK_SECRET_CONNECT`, or the legacy `STRIPE_WEBHOOK_SECRET`.
+- Re-read the existing OpenPartner sandbox endpoint through Stripe's API: enabled and now includes `checkout.session.completed`. The user subsequently added `STRIPE_SECRET_KEY_PROD` alongside `STRIPE_SECRET_KEY_SAND` in `.env.integration.local`. Read-only balance/endpoint checks authenticate both keys with `livemode=true` / `false` respectively. PROD destination is independently verified enabled with `checkout.session.completed`; both modes target the same hosted URL. Sandbox and LIVE keys belong to different Stripe accounts; CLI matches the sandbox account.
+- Sent two signed synthetic Checkout probes to the hosted API. Each omitted tenant metadata, customer and click reference so tenant resolution exits before database writes or Stripe customer operations. Sandbox-secret probe: HTTP 200 with `unresolved_tenant`. PROD-secret probe: HTTP 400 `invalid_signature`. This verifies signature configuration, not provider delivery or a conversion.
+- The hosted API currently rejects PROD-secret signatures. Real live deliveries cannot be credited while it remains configured this way. The application source has no automatic `livemode` isolation check; environment separation depends on deployed credentials/destinations and separate test data.
+- CLI version 1.53.1; `stripe whoami --format json` confirms test mode and the same account as the sandbox API key. Retrieved the CLI listener secret privately with `stripe listen --print-secret --skip-update`; it differs from both Dashboard secrets. Removed the private intermediate file. No forwarding listener remains active and no `stripe trigger` command ran.
+- Created `.agents/skills/openpartner-stripe-webhooks/SKILL.md` for this recurring check, including exact alias mapping, signature-only probe boundaries and CLI/Dashboard distinction. Secrets and CapRover configuration remain unchanged by the agent.
+
+For live rollout, the API must use the live Stripe API key in `STRIPE_SECRET_KEY` and the PROD destination secret in `STRIPE_WEBHOOK_SECRET_PLATFORM`. For sandbox integration, use the sandbox API key and SANDBOX destination secret on the test application. A CLI-forwarded local receiver uses its own listener secret. Do not enable both live and sandbox financial writes against one ledger as an incidental test workaround.
+
+Remaining acceptance: isolated referral/customer stitching, genuine signed provider delivery, one-time revenue, retry deduplication, refund behavior and website integration. The initial missing-signing-secret and missing-Checkout-subscription blockers are now resolved for sandbox signature tests.
