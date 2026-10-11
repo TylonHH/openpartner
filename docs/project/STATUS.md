@@ -95,3 +95,16 @@ The user reports a newly deployed image and production configuration. The agent 
 - Updated the webhook and magic-login skills with negative-signature checks, the exact root heading and cookie-expiry verification. No unchanged local financial suite was rerun for this configuration check.
 
 Next acceptance remains isolated sandbox provider/website integration, including identity, paid revenue, retries and refunds. Signature-only probes are not evidence of a completed payment or commission. No live purchase, refund, transfer or payout was triggered.
+
+## 2026-10-11 — Cookie fix submitted to original upstream
+
+The user explicitly authorized submitting fork PR #13's fix to `getcoherence/openpartner`. Refetched upstream main; its five affected files match the fork base and still contain the `clearCookie` lifetime issue. Created isolated worktree `.cache/upstream-cookie-fix`, branch `upstream-fix/expire-session-cookies`, from upstream commit `eeff532ee758dc6221b4d03af852e5705a2328fb`; cherry-picked only fix commit `463d257` as `69f8c33`. No fork-specific project files, deployment changes or dependency fixes are included.
+
+Published [getcoherence/openpartner PR #86](https://github.com/getcoherence/openpartner/pull/86), head `69f8c33ec33f85c19294a2dc9ad01cad373419d3`, from the fork branch. Verified GitHub's diff: one commit and exactly five intended source/test files. Fork [PR #13](https://github.com/TylonHH/openpartner/pull/13) remains separate and open.
+
+- Installed the exact upstream frozen lockfile independently rather than linking the fork's dependency tree. No lockfile edits or dependency changes.
+- Node 22.20.0, pnpm 9.15.4 and the owned PostgreSQL 16 loopback fixture: shared DB build, migrations, lint and typecheck pass. Five existing lint warnings remain.
+- All **546 tests pass in 53 files** (API 520/48 files, SDK 11/2, router 3/1, portal 12/2), including six cookie tests and nine multi-tenant cases with the provisioned app role present. No reported skips; the DB package has no tests. Counts differ from the fork's combined-preview run because this branch contains only the cookie fix on the upstream base.
+- Upstream production audit exits 1: 3 low, 23 moderate, 3 high and 1 critical findings. This is the pre-existing dependency baseline, separately addressed by [upstream PR #85](https://github.com/getcoherence/openpartner/pull/85); it is not folded into the cookie change.
+- Upstream Actions run [38145677671](https://github.com/getcoherence/openpartner/actions/runs/38145677671) reports `action_required`; its public page explicitly confirms that it awaits maintainer approval. Full upstream CI is not reported as passed. External Semgrep scan passed.
+- Private evidence is in `.cache/validation/upstream-cookie/`. Stopped the owned test database after verification. No merge, deployment, financial operation or historical-branch cleanup performed.

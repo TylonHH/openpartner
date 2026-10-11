@@ -64,3 +64,13 @@ Restart an existing verified fixture with `rtk proxy docker start openpartner-co
 - Verify resulting CI. A PR/image publication is separate from CapRover deployment. Keep production rollout tied to an explicit rollout instruction.
 
 Update this skill when the test procedure changes or a repeatable failure gets a verified resolution.
+
+## Authorized original-upstream contributions
+
+Origin remains the default target. When the user explicitly requests submission to `getcoherence/openpartner`, fetch `upstream/main`, compare the affected files and check existing upstream PRs for duplicates. Create a separate worktree/branch from that upstream base and cherry-pick only the focused fix commit; do not submit the fork's deployment, dependency or project-management history.
+
+Install the upstream frozen lockfile independently so checks use its actual dependency versions. Run shared DB build, migration and required lint/typecheck/test checks with the same disposable fixture and dummy environment; preserve production `.env`. Record exact test counts separately from fork/combined-preview results.
+
+Push the branch to the user's fork (`origin`), then create the cross-repository PR with `--repo getcoherence/openpartner --base main --head TylonHH:<branch>` and a body file following upstream's PR template. Link the matching fork PR. Verify there is exactly the intended commit/file diff.
+
+Read Actions status and external checks. Upstream fork workflows currently require maintainer approval (`action_required`); do not call them passing or try to approve on the maintainer's behalf. Its older dependency audit is blocking and currently fails; existing remediation is upstream PR #85. Report that baseline separately and keep the cookie/API fix focused. Record the upstream PR link/status in the project handoff and stop the local fixture when unused.
