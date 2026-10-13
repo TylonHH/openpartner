@@ -135,44 +135,29 @@ const COUPON_VERIFICATION_THRESHOLD = 5;
  *  rows — partners can deactivate then re-add freely. */
 const ACTIVE_CODES_PER_PROGRAM_CAP = 5;
 
+/** Rolling 24h creation cap per (partner, program) for self-service mints
+ *  (partners + federated creators). The active-codes cap alone doesn't bound
+ *  churn: create/deactivate loops each mint a fresh Stripe Coupon +
+ *  PromotionCode on self-host. Counts deactivated rows too. Admins bypass. */
+const CREATIONS_PER_DAY_CAP = 10;
+
 couponsRouter.post('/partners/:id/coupons', requireAuth, async (req, res) => {
   // Authorization:
   //   - admin → always allowed.
   //   - scoped key with 'partners:write' → allowed only when the bound
   //     program's partnersMayCustomizeCode flag is true. Network proxies
   //     a creator's "Add another code" through this path.
-  //   - everything else → 403. (Partner-session principals do NOT auto-
-  //     get this; partners only manage codes via the Network's federated
-  //     PATCH/POST surface, never against the vendor instance directly.)
+  //   - local partner → own codes only, with program access and customization enabled.
+  //   - everything else → 403.
   const principal = req.principal;
   const isAdmin = principal?.role === 'admin';
   const isFederated = principal?.role === 'scoped' && principal.scopes.includes('partners:write');
-  if (!isAdmin && !isFederated) return res.status(403).json({ error: 'forbidden' });
+  const isPartner = principal?.role === 'partner' && principal.partnerId === req.params.id;
+  if (!isAdmin && !isFederated && !isPartner) return res.status(403).json({ error: 'forbidden' });
 
   const { db, tenantId } = tenantOf(req);
   const body = createSchema.safeParse(req.body ?? {});
   if (!body.success) return res.status(400).json({ error: 'invalid_body', detail: body.error.flatten() });
-
-  // Verification gate: past N coupons without a successful redemption
-  // ever recorded, refuse new manual mints. Forces the brand to
-  // actually wire up /coupons/redeem (or the Stripe webhook auto-
-  // redemption path) before they hand more codes to creators that
-  // won't attribute.
-  const tenant = (await db('Tenant').where({ id: tenantId }).first(['couponIntegrationVerifiedAt'])) as
-    | { couponIntegrationVerifiedAt: Date | null }
-    | undefined;
-  if (!tenant?.couponIntegrationVerifiedAt) {
-    const countRow = (await db(TABLES.Coupon).count<{ count: string }[]>({ count: '*' })) as Array<{ count: string }>;
-    const existing = Number(countRow[0]?.count ?? 0);
-    if (existing >= COUPON_VERIFICATION_THRESHOLD) {
-      return res.status(409).json({
-        error: 'verification_required',
-        detail: `You have ${existing} coupons but no successful redemption yet. Wire up POST /coupons/redeem on your checkout — or set up a Stripe webhook pointing at /webhooks/stripe — and process one test redemption to unlock further mints. This protects creators from sharing codes that don't actually attribute.`,
-        threshold: COUPON_VERIFICATION_THRESHOLD,
-        existing,
-      });
-    }
-  }
 
   const partner = await db<PartnerRow>(TABLES.Partner).where({ id: req.params.id }).first();
   if (!partner) return res.status(404).json({ error: 'partner_not_found' });
@@ -185,6 +170,41 @@ couponsRouter.post('/partners/:id/coupons', requireAuth, async (req, res) => {
   // want regardless of the partner-self-service setting.
   if (!isAdmin && !program.partnersMayCustomizeCode) {
     return res.status(403).json({ error: 'partner_customization_disabled' });
+  }
+
+  if (isPartner) {
+    const grant = await db(TABLES.PartnerProgram).where({ partnerId: partner.id, programId: program.id }).first();
+    if (!grant) return res.status(403).json({ error: 'campaign_not_granted' });
+    const { campaignAcceptsNewActivity } = await import('../campaign-lifecycle.js');
+    if (!campaignAcceptsNewActivity(program)) return res.status(409).json({ error: 'campaign_not_active' });
+  }
+
+  // Verification gate: past N coupons without a successful redemption
+  // ever recorded, refuse new manual mints. Forces the brand to
+  // actually wire up /coupons/redeem (or the Stripe webhook auto-
+  // redemption path) before they hand more codes to creators that
+  // won't attribute. Runs after the access checks so a caller who can't
+  // mint here never learns the brand's coupon count or integration state.
+  const tenant = (await db('Tenant').where({ id: tenantId }).first(['couponIntegrationVerifiedAt'])) as
+    | { couponIntegrationVerifiedAt: Date | null }
+    | undefined;
+  if (!tenant?.couponIntegrationVerifiedAt) {
+    const countRow = (await db(TABLES.Coupon).count<{ count: string }[]>({ count: '*' })) as Array<{ count: string }>;
+    const existing = Number(countRow[0]?.count ?? 0);
+    if (existing >= COUPON_VERIFICATION_THRESHOLD) {
+      if (!isAdmin) {
+        return res.status(409).json({
+          error: 'verification_required',
+          detail: "This brand hasn't finished setting up coupon tracking yet, so new codes are paused. Ask the brand to complete their coupon integration.",
+        });
+      }
+      return res.status(409).json({
+        error: 'verification_required',
+        detail: `You have ${existing} coupons but no successful redemption yet. Wire up POST /coupons/redeem on your checkout — or set up a Stripe webhook pointing at /webhooks/stripe — and process one test redemption to unlock further mints. This protects creators from sharing codes that don't actually attribute.`,
+        threshold: COUPON_VERIFICATION_THRESHOLD,
+        existing,
+      });
+    }
   }
 
   // Active-codes cap. Counts only non-deactivated rows so a partner who
@@ -202,6 +222,17 @@ couponsRouter.post('/partners/:id/coupons', requireAuth, async (req, res) => {
         error: 'active_codes_cap_reached',
         detail: `You already have ${ACTIVE_CODES_PER_PROGRAM_CAP} active codes for this program. Deactivate one before adding another.`,
         cap: ACTIVE_CODES_PER_PROGRAM_CAP,
+      });
+    }
+    const createdToday = (await db(TABLES.Coupon)
+      .where({ partnerId: partner.id, programId: program.id })
+      .where('createdAt', '>', new Date(Date.now() - 24 * 60 * 60 * 1000))
+      .count<{ count: string }[]>({ count: '*' })) as Array<{ count: string }>;
+    if (Number(createdToday[0]?.count ?? 0) >= CREATIONS_PER_DAY_CAP) {
+      return res.status(429).json({
+        error: 'daily_code_limit_reached',
+        detail: `You've created ${CREATIONS_PER_DAY_CAP} codes for this program in the last 24 hours. Try again tomorrow.`,
+        cap: CREATIONS_PER_DAY_CAP,
       });
     }
   }
@@ -281,7 +312,8 @@ couponsRouter.delete('/partners/:id/coupons/:couponId', requireAuth, async (req,
   const principal = req.principal;
   const isAdmin = principal?.role === 'admin';
   const isFederated = principal?.role === 'scoped' && principal.scopes.includes('partners:write');
-  if (!isAdmin && !isFederated) return res.status(403).json({ error: 'forbidden' });
+  const isPartner = principal?.role === 'partner' && principal.partnerId === req.params.id;
+  if (!isAdmin && !isFederated && !isPartner) return res.status(403).json({ error: 'forbidden' });
 
   const { db } = tenantOf(req);
   const coupon = await db<CouponRow>(TABLES.Coupon)
@@ -294,6 +326,11 @@ couponsRouter.delete('/partners/:id/coupons/:couponId', requireAuth, async (req,
 
   if (!isAdmin && !program.partnersMayCustomizeCode) {
     return res.status(403).json({ error: 'partner_customization_disabled' });
+  }
+
+  if (isPartner) {
+    const grant = await db(TABLES.PartnerProgram).where({ partnerId: req.params.id, programId: program.id }).first();
+    if (!grant) return res.status(403).json({ error: 'campaign_not_granted' });
   }
 
   // Idempotent: re-deactivating a deactivated coupon is a no-op +

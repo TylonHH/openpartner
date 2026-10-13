@@ -269,6 +269,7 @@ function Shell() {
                   <Route path="network/profile" element={<MyProfilePage />} />
                 </>
               )}
+              <Route path="coupons" element={<AdminPartnerCoupons ownPartnerId={auth.principal.partnerId!} />} />
               <Route path="postbacks" element={<PartnerPostbacksPage principal={auth.principal} />} />
             </>
           )}
@@ -432,6 +433,7 @@ export function Sidebar({ principal, variant = 'sidebar' }: { principal: Princip
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <NavItem to="/" icon={<LayoutDashboard size={16} />}>Dashboard</NavItem>
           <NavItem to="/links" icon={<Link2 size={16} />}>Links</NavItem>
+          {principal.role === 'partner' && <NavItem to="/coupons" icon={<Tag size={16} />}>Coupons</NavItem>}
           <NavItem to="/commissions" icon={<Receipt size={16} />}>Commissions</NavItem>
           <NavItem to="/payouts" icon={<Banknote size={16} />}>Payouts</NavItem>
           {principal.role === 'partner' && <NavItem to="/connect" icon={<CreditCard size={16} />}>Stripe Connect</NavItem>}
