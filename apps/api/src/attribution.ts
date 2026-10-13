@@ -35,6 +35,7 @@ import {
   type IdentityRow,
 } from '@openpartner/db';
 import { dispatchEvent } from './webhook-dispatcher.js';
+import { readAffiliateDecision } from './affiliate-decision.js';
 
 // Average month length used by the recurringMonths cap. We use 30.4375 days
 // (365.25 / 12) so a "12 months" cap doesn't drift by an extra day every
@@ -49,7 +50,7 @@ const MONTH_MS = 30.4375 * 24 * 60 * 60 * 1000;
 const CLICK_AFTER_EVENT_GRACE_MS = 5 * 60 * 1000;
 
 export interface AttributeResult {
-  status: 'attributed' | 'no_identity' | 'no_click' | 'outside_window' | 'already_attributed';
+  status: 'attributed' | 'no_identity' | 'no_click' | 'outside_window' | 'already_attributed' | 'external_channel' | 'refunded';
   touches?: Array<{ clickId: string; partnerId: string; weight: number; attributionId: string; commissionId?: string }>;
   model?: AttributionModel;
 }
@@ -63,12 +64,32 @@ export async function attributeEvent(
   event: EventRow,
   modelOverride?: AttributionModel,
 ): Promise<AttributeResult> {
-  const identities = await db<IdentityRow>(TABLES.Identity).where({ userId: event.userId });
+  const decision = readAffiliateDecision(event.metadata, event.tenantId, event.userId);
+  if (decision?.winner === 'awin') return { status: 'external_channel' };
+  if (decision && event.type === 'checkout_completed') return { status: 'no_click' };
+  if (decision && event.type === 'invoice_paid' && typeof event.metadata?.stripeInvoiceId === 'string') {
+    const refund = await db<EventRow>(TABLES.Event).where({ tenantId: event.tenantId, type: 'refund' })
+      .whereRaw(`"metadata"->>'stripeInvoiceId' = ?`, [event.metadata.stripeInvoiceId])
+      .whereRaw(`"metadata"->>'fullRefund' = 'true'`).first();
+    if (refund) return { status: 'refunded' };
+  }
+  const couponPartner = decision?.winner === 'none' && typeof event.metadata?.affiliateCouponPartnerId === 'string'
+    ? event.metadata.affiliateCouponPartnerId : null;
+  if (decision?.winner === 'none' && !couponPartner) return { status: 'no_click' };
+  if (decision?.winner === 'openpartner') {
+    const click = await db<ClickRow>(TABLES.Click).where({ id: decision.clickId!, tenantId: event.tenantId }).first();
+    if (!click) return { status: 'no_click' };
+    // A verified merchant proof can stitch before its best-effort identify request arrives.
+    await db<IdentityRow>(TABLES.Identity).insert({ id: ulid(), tenantId: event.tenantId, clickId: click.id, userId: event.userId })
+      .onConflict(['clickId', 'userId']).ignore();
+  }
+  const identities = await db<IdentityRow>(TABLES.Identity).where({ userId: event.userId, tenantId: event.tenantId });
   if (identities.length === 0) return { status: 'no_identity' };
 
   const clickIds = identities.map((i) => i.clickId);
-  const clicks = await db<ClickRow>(TABLES.Click).whereIn('id', clickIds);
-  const cleanClicks = clicks.filter((c) => !c.fraudFlag);
+  const clicks = await db<ClickRow>(TABLES.Click).where({ tenantId: event.tenantId }).whereIn('id', clickIds);
+  const cleanClicks = clicks.filter((c) => !c.fraudFlag &&
+    (!decision || (decision.winner === 'openpartner' ? c.id === decision.clickId : c.partnerId === couponPartner)));
   if (cleanClicks.length === 0) return { status: 'no_click' };
 
   // Revoked partners are excluded from attribution — any call landing
@@ -96,7 +117,7 @@ export async function attributeEvent(
     const campaign = campaignsById.get(click.programId);
     if (!campaign) continue;
     const windowMs = campaign.attributionWindowDays * 24 * 60 * 60 * 1000;
-    const ageMs = new Date(event.ts).getTime() - new Date(click.ts).getTime();
+    const ageMs = (decision?.winner === 'openpartner' ? decision.ts : new Date(event.ts).getTime()) - new Date(click.ts).getTime();
     // Outside the window OR a click that happened meaningfully AFTER the
     // event: a later click must never attribute an earlier conversion
     // (backlog / backdated events made negative ages pass the old one-sided

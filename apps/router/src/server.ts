@@ -168,10 +168,13 @@ async function resolveLink(c: Context, link: LinkRow | undefined) {
     fraudFlag,
   });
 
-  c.header(
-    'Set-Cookie',
-    `_cref=${clickId}; Domain=${COOKIE_DOMAIN}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax`,
-  );
+  // Consent-aware sites capture the query handoff after opt-in instead.
+  if (process.env.REFERRAL_COOKIE_ENABLED !== 'false') {
+    c.header(
+      'Set-Cookie',
+      `_cref=${clickId}; Domain=${COOKIE_DOMAIN}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax`,
+    );
+  }
 
   return c.redirect(destination.toString(), 302);
 }

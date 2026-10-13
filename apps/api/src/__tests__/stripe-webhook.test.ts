@@ -11,9 +11,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import request from 'supertest';
 import { ulid } from 'ulid';
 import Stripe from 'stripe';
+import { createHmac } from 'node:crypto';
 
 const STRIPE_SECRET = 'sk_test_dummy_for_webhook_tests';
 const WEBHOOK_SECRET = 'whsec_test_secret_for_webhook_tests';
+const AFFILIATE_SECRET = 'affiliate_fixture_secret_0123456789abcdef';
 
 process.env.STRIPE_SECRET_KEY = STRIPE_SECRET;
 process.env.STRIPE_WEBHOOK_SECRET = WEBHOOK_SECRET;
@@ -33,6 +35,9 @@ vi.mock('stripe', async () => {
     (instance as unknown as { customers: unknown }).customers = {
       update: vi.fn().mockResolvedValue({ id: 'cus_test_mocked' }),
       retrieve: vi.fn().mockResolvedValue({ id: 'cus_test_mocked', metadata: {}, deleted: false }),
+    };
+    (instance as unknown as { paymentIntents: unknown }).paymentIntents = {
+      retrieve: vi.fn().mockResolvedValue({ metadata: {} }),
     };
     return instance;
   }
@@ -68,6 +73,7 @@ function postWebhook(eventPayload: object) {
 }
 
 const TABLES_TO_CLEAN = [
+  TABLES.Coupon,
   TABLES.Commission,
   TABLES.Attribution,
   TABLES.Event,
@@ -135,8 +141,136 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  delete process.env.AFFILIATE_DECISION_SECRET;
   if (skipIntegration) return;
   for (const t of TABLES_TO_CLEAN) await db(t).del();
+});
+
+function affiliateMetadata(winner: 'awin' | 'openpartner' | 'none', userId: string, clickId: string | null = null, ts = Date.now()) {
+  process.env.AFFILIATE_DECISION_SECRET = AFFILIATE_SECRET;
+  const payload = JSON.stringify({ v: 1, tenantId: DEFAULT_TENANT_ID, userId, scope: ulid(), winner, clickId, ts });
+  return { openpartner_tenant_id: DEFAULT_TENANT_ID, affiliate_decision: payload,
+    affiliate_signature: createHmac('sha256', AFFILIATE_SECRET).update(payload).digest('hex') };
+}
+
+describe.skipIf(skipIntegration)('cross-network Stripe attribution', () => {
+  it('stitches a trusted OpenPartner purchase before identify delivery and keeps invoice-backed checkout tracking nonpayable', async () => {
+    const { clickId, programId } = await seedClick();
+    await db(TABLES.Program).where({ id: programId }).update({ commissionRule: { type: 'fixed', value: 5 } });
+    const metadata = affiliateMetadata('openpartner', 'before_identify', clickId);
+    const checkout = await postWebhook({ id: `evt_${ulid()}`, type: 'checkout.session.completed', created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'cs_before', metadata, mode: 'subscription', payment_status: 'paid', invoice: 'in_before' } } });
+    expect(checkout.status).toBe(200);
+    expect(await db(TABLES.Commission)).toHaveLength(0);
+    const invoice = await postWebhook({ id: `evt_${ulid()}`, type: 'invoice.paid', created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'in_before', customer: 'cus_before', parent: { subscription_details: { metadata } }, amount_paid: 2500, currency: 'eur' } } });
+    expect(invoice.status).toBe(200);
+    expect(await db(TABLES.Identity).where({ userId: 'before_identify', clickId })).toHaveLength(1);
+    expect(await db(TABLES.Commission)).toHaveLength(1);
+  });
+  it('records an Awin purchase without crediting an existing OpenPartner identity, including repeated financial deliveries', async () => {
+    const { clickId, partnerId, programId } = await seedClick();
+    await db(TABLES.Coupon).insert({ id: ulid(), tenantId: DEFAULT_TENANT_ID, partnerId, programId, code: 'PARTNER' });
+    const userId = 'website_user';
+    await db(TABLES.Identity).insert({ id: ulid(), tenantId: DEFAULT_TENANT_ID, clickId, userId });
+    const metadata = affiliateMetadata('awin', userId);
+    const object = { id: `cs_${ulid()}`, metadata, mode: 'payment', payment_status: 'paid', amount_total: 10000,
+      currency: 'eur', payment_intent: 'pi_awin', customer: 'cus_awin', discounts: [{ coupon: 'PARTNER' }] };
+    for (const type of ['checkout.session.completed', 'checkout.session.async_payment_succeeded']) {
+      const response = await postWebhook({ id: `evt_${ulid()}`, type, created: Math.floor(Date.now() / 1000), data: { object } });
+      expect(response.status).toBe(200);
+    }
+    expect(await db(TABLES.Event).where({ userId, type: 'invoice_paid' })).toHaveLength(1);
+    expect(await db(TABLES.Commission)).toHaveLength(0);
+    expect(await db(TABLES.Identity)).toHaveLength(1);
+  });
+
+  it('pins OpenPartner to the signed click instead of a newer stitched click and reverses a full one-time refund', async () => {
+    const first = await seedClick();
+    const second = await seedClick();
+    const userId = 'website_op';
+    for (const clickId of [first.clickId, second.clickId]) await db(TABLES.Identity).insert({ id: ulid(), tenantId: DEFAULT_TENANT_ID, clickId, userId });
+    const metadata = affiliateMetadata('openpartner', userId, first.clickId);
+    const response = await postWebhook({ id: `evt_${ulid()}`, type: 'checkout.session.completed', created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'cs_op', metadata, mode: 'payment', payment_status: 'paid', amount_total: 10000,
+        currency: 'eur', payment_intent: 'pi_op', customer: 'cus_op' } } });
+    expect(response.status).toBe(200);
+    const commissions = await db(TABLES.Commission);
+    expect(commissions).toHaveLength(1);
+    expect(commissions[0].partnerId).toBe(first.partnerId);
+    expect(Number(commissions[0].amount)).toBe(20);
+    const refund = await postWebhook({ id: `evt_${ulid()}`, type: 'charge.refunded', created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'ch_op', customer: 'cus_op', payment_intent: 'pi_op', amount: 10000, amount_captured: 10000, amount_refunded: 10000, currency: 'eur' } } });
+    expect(refund.status).toBe(200);
+    expect((await db(TABLES.Commission).first()).status).toBe('reversed');
+  });
+
+  it('uses the invoice snapshot before customer identification and deduplicates different event IDs for the same invoice', async () => {
+    const metadata = affiliateMetadata('awin', 'invoice_user');
+    for (let i = 0; i < 2; i++) {
+      const response = await postWebhook({ id: `evt_${ulid()}`, type: 'invoice.paid', created: Math.floor(Date.now() / 1000),
+        data: { object: { id: 'in_awin', customer: 'cus_unstitched', parent: { subscription_details: { metadata } }, amount_paid: 2500, currency: 'eur' } } });
+      expect(response.status).toBe(200);
+    }
+    expect(await db(TABLES.Event).where({ userId: 'invoice_user', type: 'invoice_paid' })).toHaveLength(1);
+    expect(await db(TABLES.Commission)).toHaveLength(0);
+  });
+
+  it('keeps the acquisition click eligible on renewals while preserving program rules', async () => {
+    const { clickId, partnerId } = await seedClick();
+    const acquired = Date.now() - 100 * 86_400_000;
+    await db(TABLES.Click).where({ id: clickId }).update({ ts: new Date(acquired - 1000) });
+    await db(TABLES.Identity).insert({ id: ulid(), tenantId: DEFAULT_TENANT_ID, clickId, userId: 'renewal_user' });
+    const metadata = affiliateMetadata('openpartner', 'renewal_user', clickId, acquired);
+    const response = await postWebhook({ id: `evt_${ulid()}`, type: 'invoice.paid', created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'in_renewal', customer: 'cus_renewal', parent: { subscription_details: { metadata } }, amount_paid: 5000, currency: 'eur' } } });
+    expect(response.status).toBe(200);
+    expect((await db(TABLES.Commission).first()).partnerId).toBe(partnerId);
+  });
+
+  it('does not reuse stale identities when the signed purchase has no eligible channel', async () => {
+    const { clickId } = await seedClick();
+    await db(TABLES.Identity).insert({ id: ulid(), tenantId: DEFAULT_TENANT_ID, clickId, userId: 'no_channel' });
+    const metadata = affiliateMetadata('none', 'no_channel');
+    const response = await postWebhook({ id: `evt_${ulid()}`, type: 'invoice.paid', created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'in_none', customer: 'cus_none', metadata, amount_paid: 1000, currency: 'eur' } } });
+    expect(response.status).toBe(200);
+    expect(await db(TABLES.Commission)).toHaveLength(0);
+  });
+
+  it('permits a current OpenPartner coupon when no eligible link won', async () => {
+    const { partnerId, programId } = await seedClick();
+    await db(TABLES.Coupon).insert({ id: ulid(), tenantId: DEFAULT_TENANT_ID, partnerId, programId, code: 'COUPONONLY' });
+    const metadata = affiliateMetadata('none', 'coupon_only');
+    const response = await postWebhook({ id: `evt_${ulid()}`, type: 'invoice.paid', created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'in_coupon', customer: 'cus_coupon', metadata, discounts: [{ coupon: 'COUPONONLY' }], amount_paid: 1000, currency: 'eur' } } });
+    expect(response.status).toBe(200);
+    expect((await db(TABLES.Commission).first()).partnerId).toBe(partnerId);
+  });
+
+  it('rejects tampered decisions without persisting a payable conversion', async () => {
+    const metadata = affiliateMetadata('awin', 'tampered');
+    metadata.affiliate_decision = metadata.affiliate_decision.replace('awin', 'openpartner');
+    const response = await postWebhook({ id: `evt_${ulid()}`, type: 'invoice.paid', created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'in_tampered', metadata, customer: 'cus_tampered', amount_paid: 1000, currency: 'eur' } } });
+    expect(response.status).toBe(500);
+    expect(await db(TABLES.Event)).toHaveLength(0);
+    expect(await db(TABLES.Commission)).toHaveLength(0);
+  });
+
+  it('does not accrue an already fully refunded signed one-time payment when deliveries arrive out of order', async () => {
+    const { clickId } = await seedClick();
+    await db(TABLES.Identity).insert({ id: ulid(), tenantId: DEFAULT_TENANT_ID, clickId, userId: 'early_refund' });
+    const metadata = affiliateMetadata('openpartner', 'early_refund', clickId);
+    const refund = await postWebhook({ id: `evt_${ulid()}`, type: 'charge.refunded', created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'ch_early', metadata, payment_intent: 'pi_early', amount_captured: 1000, amount_refunded: 1000, currency: 'eur' } } });
+    expect(refund.status).toBe(200);
+    const purchase = await postWebhook({ id: `evt_${ulid()}`, type: 'checkout.session.completed', created: Math.floor(Date.now() / 1000),
+      data: { object: { id: 'cs_early', metadata, mode: 'payment', payment_status: 'paid', payment_intent: 'pi_early', amount_total: 1000, currency: 'eur' } } });
+    expect(purchase.status).toBe(200);
+    expect(purchase.body.attribution.status).toBe('refunded');
+    expect(await db(TABLES.Commission)).toHaveLength(0);
+  });
 });
 
 describe.skipIf(skipIntegration)('stripe webhook — merchant billing flow', () => {
