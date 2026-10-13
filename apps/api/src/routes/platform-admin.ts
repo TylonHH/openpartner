@@ -193,6 +193,7 @@ platformAdminRouter.post('/platform-admin/signin', signinLimit, async (req, res)
         html: tmpl.html,
         tag: 'platform_admin_signin',
         metadata: { channel: 'platform_ops', email },
+        platform: true,
       });
     } catch (err) {
       console.error('[platform-admin] signin mail failed', err);
