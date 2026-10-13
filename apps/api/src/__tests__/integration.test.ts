@@ -70,6 +70,40 @@ beforeEach(async () => {
 });
 
 describe.skipIf(skipIntegration)('api integration', () => {
+  it('persists partner Network visibility across unrelated settings saves', async () => {
+    const initial = await request(app).get('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`);
+    expect(initial.body.partnerNetworkVisible).toBe(true);
+    const saved = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ partnerNetworkVisible: false });
+    expect(saved.status).toBe(200);
+    expect(saved.body.partnerNetworkVisible).toBe(false);
+    const other = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ programName: 'Brand' });
+    expect(other.body.partnerNetworkVisible).toBe(false);
+    const invalid = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ partnerNetworkVisible: 'false' });
+    expect(invalid.status).toBe(400);
+    expect(other.body.partnerNetworkToggleAvailable).toBe(true);
+  });
+  it('the hosted (multi-tenant) platform ignores the partner Network toggle', async () => {
+    // The stored value from a self-host era (or a direct API call) must not
+    // hide Network discovery from a hosted brand's partners.
+    const tenantId = ulid();
+    const slug = `hosted${tenantId.slice(-8).toLowerCase()}`;
+    await db(TABLES.Tenant).insert({ id: tenantId, slug, displayName: 'Hosted Brand', status: 'active', approvalStatus: 'approved' });
+    await db(TABLES.Config).insert({ tenantId, key: 'program_settings', value: { partnerNetworkVisible: false } as never, updatedAt: new Date() });
+    process.env.OPENPARTNER_TENANCY = 'multi';
+    try {
+      const read = await request(app).get(`/t/${slug}/config/program`).set('Authorization', `Bearer ${ADMIN_KEY}`);
+      expect(read.status).toBe(200);
+      expect(read.body.partnerNetworkVisible).toBe(true);
+      expect(read.body.partnerNetworkToggleAvailable).toBe(false);
+      const save = await request(app).post(`/t/${slug}/config/program`).set('Authorization', `Bearer ${ADMIN_KEY}`).send({ partnerNetworkVisible: false });
+      expect(save.status).toBe(200);
+      expect(save.body.partnerNetworkVisible).toBe(true);
+    } finally {
+      process.env.OPENPARTNER_TENANCY = 'single';
+      await db(TABLES.Config).where({ tenantId }).del();
+      await db(TABLES.Tenant).where({ id: tenantId }).del();
+    }
+  });
   it('validates and persists the public router origin across settings saves', async () => {
     for (const routerUrl of ['javascript:alert(1)', 'https://user:pass@example.com', 'https://example.com/r', 'https://example.com?x=1', 'https://example.com/#x']) {
       const rejected = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ routerUrl });
