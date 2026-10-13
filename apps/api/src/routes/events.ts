@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ulid } from 'ulid';
-import { TABLES, type EventRow, type ClickRow, type ProgramRow } from '@openpartner/db';
+import { TABLES, type EventRow } from '@openpartner/db';
 import { attributeEvent } from '../attribution.js';
 import { grantScope, requireAdmin, requireAuth } from '../auth.js';
 import { tenantOf } from '../tenancy.js';
@@ -16,15 +16,6 @@ const schema = z.object({
 });
 
 export const eventsRouter = Router();
-
-// Merchant backend validates a click before signing a cross-network purchase decision.
-eventsRouter.get('/attribution/clicks/:id', requireAuth, grantScope('events:write'), requireAdmin, async (req, res) => {
-  const { db, tenantId } = tenantOf(req);
-  const click = await db<ClickRow>(TABLES.Click).where({ id: req.params.id, tenantId }).first();
-  const program = click && await db<ProgramRow>(TABLES.Program).where({ id: click.programId, tenantId }).first();
-  if (!click || click.fraudFlag || !program) return res.status(404).json({ error: 'click_not_found' });
-  res.json({ clickId: click.id, ts: new Date(click.ts).getTime(), attributionWindowDays: program.attributionWindowDays });
-});
 
 // Server-to-server conversion event ingest — requires admin credentials
 // (this is the merchant's backend speaking, not a browser). A scoped key

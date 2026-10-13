@@ -15,7 +15,6 @@ import {
 } from '@openpartner/db';
 import { appDb, db } from '../db.js';
 import { attributeEvent } from '../attribution.js';
-import { readAffiliateDecision } from '../affiliate-decision.js';
 import { inferPlanFromPriceIds, persistMerchantSubscription, updateTenantPlanFromStripeSub } from './billing.js';
 import {
   handleCancellationScheduleChanged,
@@ -100,7 +99,6 @@ function verifyWebhook(
 // listed here are unconstrained (the handlers skip anything they don't map).
 const PLATFORM_EVENT_TYPES = new Set([
   'checkout.session.completed',
-  'checkout.session.async_payment_succeeded',
   'customer.created',
   'customer.subscription.created',
   'customer.subscription.updated',
@@ -203,10 +201,7 @@ stripeWebhookRouter.post(
     }
     if (funding) return res.json({ ok: true, funding });
 
-    const affiliateMetadata = family !== 'connect' ? await affiliateMetadataForStripe(stripe, event) : {};
-    const claimedTenant = typeof affiliateMetadata.openpartner_tenant_id === 'string' ? affiliateMetadata.openpartner_tenant_id : '';
-    const decision = readAffiliateDecision(affiliateMetadata, claimedTenant);
-    const tenantId = decision?.tenantId ?? await resolveTenantForEvent(event, family);
+    const tenantId = await resolveTenantForEvent(event, family);
     if (!tenantId) {
       // Genuinely unresolvable — most likely a connected-account event for
       // an account we don't recognize. 2xx so Stripe stops retrying.
@@ -222,27 +217,18 @@ stripeWebhookRouter.post(
       // Click + Identity exist BEFORE the standard attribution path runs.
       // The next attributeEvent() call then finds the click and credits
       // the partner — same code path as a clicked share-link conversion.
-      const redeemed = decision && decision.winner !== 'none' ? [] :
-        await maybeRedeemStripeCoupons(trx, stripe!, event!, tenantId, decision?.userId);
+      const redeemed = await maybeRedeemStripeCoupons(trx, stripe!, event!, tenantId);
       if (redeemed.length > 0) {
         console.log('[stripe-webhook] auto-redeemed coupons', { eventId: event!.id, redeemed });
       }
 
-      const mapped = await mapStripeEvent(trx, stripe!, event!, decision?.userId);
+      const mapped = await mapStripeEvent(trx, stripe!, event!);
       if (!mapped) return { skipped: event!.type };
-      if (decision) {
-        mapped.userId = decision.userId;
-        mapped.metadata = { ...mapped.metadata, ...affiliateMetadata };
-        const coupon = redeemed.length ? await findCouponByCode(trx, redeemed[redeemed.length - 1]!) : null;
-        if (coupon) mapped.metadata.affiliateCouponPartnerId = coupon.partnerId;
-      }
 
       // Idempotency: a Stripe retry (5xx, timeout) re-delivers the same
       // event.id. Insert with ON CONFLICT DO NOTHING on the unique
       // partial index over externalEventId, then handle the dedupe path.
       const eventId = ulid();
-      const financialId = decision && mapped.type === 'invoice_paid'
-        ? `affiliate:${tenantId}:${String(mapped.metadata?.stripeInvoiceId ?? mapped.metadata?.stripeCheckoutSessionId)}` : event!.id;
       const inserted = await trx<EventRow>(TABLES.Event)
         .insert({
           id: eventId,
@@ -251,7 +237,7 @@ stripeWebhookRouter.post(
           type: mapped.type,
           value: mapped.value != null ? mapped.value.toFixed(2) : null,
           currency: mapped.currency ?? 'USD',
-          externalEventId: financialId,
+          externalEventId: event!.id,
           metadata: { stripeEventId: event!.id, stripeType: event!.type, ...(mapped.metadata ?? {}) },
           ts: new Date(event!.created * 1000),
         })
@@ -262,7 +248,7 @@ stripeWebhookRouter.post(
       if (inserted.length === 0) {
         // Retry of a previously-processed event — the first delivery
         // already attributed it. Return 2xx so Stripe stops retrying.
-        const existing = await trx<EventRow>(TABLES.Event).where({ externalEventId: financialId }).first();
+        const existing = await trx<EventRow>(TABLES.Event).where({ externalEventId: event!.id }).first();
         return { idempotent: true, eventId: existing?.id };
       }
 
@@ -283,37 +269,6 @@ stripeWebhookRouter.post(
 );
 
 const CORRECTIVE_EVENT_TYPES = new Set(['refund', 'dispute_created', 'invoice_payment_failed']);
-
-/** Invoice snapshots keep the original acquisition decision stable across renewals. */
-async function affiliateMetadataForStripe(stripe: Stripe, event: Stripe.Event): Promise<Record<string, string>> {
-  const obj = event.data.object as unknown as {
-    metadata?: Record<string, string>;
-    subscription_details?: { metadata?: Record<string, string> };
-    parent?: { subscription_details?: { metadata?: Record<string, string>; subscription?: string | { id: string } } };
-    subscription?: string | { id: string };
-  };
-  const direct = obj.metadata ?? {};
-  if (direct.affiliate_decision || direct.affiliate_signature) return direct;
-  if (event.type === 'charge.refunded' && process.env.AFFILIATE_DECISION_SECRET) {
-    const charge = event.data.object as Stripe.Charge;
-    const intent = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
-    if (intent) {
-      const original = await db<EventRow>(TABLES.Event).where({ type: 'invoice_paid' })
-        .whereRaw(`"metadata"->>'stripePaymentIntentId' = ?`, [intent]).first();
-      if (original?.metadata?.affiliate_decision) {
-        return Object.fromEntries(Object.entries(original.metadata).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
-      }
-      return (await stripe.paymentIntents.retrieve(intent)).metadata ?? {};
-    }
-  }
-  if (event.type !== 'invoice.paid' && event.type !== 'invoice.payment_failed') return {};
-  const snapshot = obj.parent?.subscription_details?.metadata ?? obj.subscription_details?.metadata;
-  if (snapshot?.affiliate_decision || snapshot?.affiliate_signature) return snapshot;
-  if (!process.env.AFFILIATE_DECISION_SECRET) return {};
-  const sub = obj.subscription ?? obj.parent?.subscription_details?.subscription;
-  const subId = typeof sub === 'string' ? sub : sub?.id;
-  return subId ? (await stripe.subscriptions.retrieve(subId)).metadata ?? {} : {};
-}
 
 /**
  * Run a callback inside an appDb transaction with `app.tenant_id` pinned to
@@ -355,15 +310,6 @@ async function resolveTenantForEvent(event: Stripe.Event, family: SecretFamily):
     const direct = obj?.metadata?.openpartner_tenant_id;
     if (direct) return direct;
   }
-  if (event.type === 'charge.refunded' && family !== 'connect') {
-    const charge = event.data.object as Stripe.Charge;
-    const intentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
-    if (intentId) {
-      const purchase = await db<EventRow>(TABLES.Event).where({ type: 'invoice_paid' })
-        .whereRaw(`"metadata"->>'stripePaymentIntentId' = ?`, [intentId]).first();
-      if (purchase) return purchase.tenantId;
-    }
-  }
 
   switch (event.type) {
     case 'account.updated': {
@@ -392,8 +338,7 @@ async function resolveTenantForEvent(event: Stripe.Event, family: SecretFamily):
       const row = await db<PayoutRow>(TABLES.Payout).where({ id: payoutId }).first(['tenantId']);
       return row?.tenantId ?? null;
     }
-    case 'checkout.session.completed':
-    case 'checkout.session.async_payment_succeeded': {
+    case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session;
       // Merchant-subscription checkout (the brand subscribing to Flex /
       // Revshare via /admin/billing) stamps openpartner_tenant_id on
@@ -534,8 +479,7 @@ async function handleConnectEvent(
         });
       return 'account_updated';
     }
-    case 'checkout.session.completed':
-    case 'checkout.session.async_payment_succeeded': {
+    case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session;
       // Disambiguator: a Rewardful-style merchant→customer checkout carries
       // client_reference_id (the cref). Our merchant→OpenPartner subscription
@@ -876,7 +820,6 @@ async function mapStripeEvent(
   trx: Knex.Transaction,
   stripe: Stripe,
   event: Stripe.Event,
-  decisionUserId?: string,
 ): Promise<MappedEvent | null> {
   switch (event.type) {
     case 'checkout.session.completed': {
@@ -885,23 +828,6 @@ async function mapStripeEvent(
       // click here, so subsequent invoice.paid / subscription events resolve
       // without an explicit op.identify() call from the merchant's app.
       const session = event.data.object as Stripe.Checkout.Session;
-      const purchase = readAffiliateDecision(session.metadata, session.metadata?.openpartner_tenant_id ?? '');
-      if (purchase) {
-        if (session.payment_status !== 'paid' && session.payment_status !== 'no_payment_required') return null;
-        // Invoice-backed checkouts accrue on invoice.paid only; one-time payments without invoices accrue here.
-        const paid = session.mode === 'payment' && !session.invoice;
-        const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
-        return {
-          userId: purchase.userId,
-          type: paid ? 'invoice_paid' : 'checkout_completed',
-          ...(paid ? { value: (session.amount_total ?? 0) / 100, currency: session.currency?.toUpperCase() ?? 'EUR' } : {}),
-          metadata: {
-            ...session.metadata,
-            stripeCheckoutSessionId: session.id,
-            ...(paymentIntentId ? { stripePaymentIntentId: paymentIntentId, stripeInvoiceId: paymentIntentId } : {}),
-          },
-        };
-      }
       const cref = session.client_reference_id;
       const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
       if (!cref || !customerId) return null;
@@ -939,13 +865,13 @@ async function mapStripeEvent(
     }
     case 'customer.subscription.created': {
       const sub = event.data.object as Stripe.Subscription;
-      const userId = decisionUserId ?? sub.metadata?.openpartner_user_id ?? (await resolveUserIdFromCustomer(trx, stripe, sub.customer));
+      const userId = sub.metadata?.openpartner_user_id ?? (await resolveUserIdFromCustomer(trx, stripe, sub.customer));
       if (!userId) return null;
       return { userId, type: 'subscription_created' };
     }
     case 'invoice.paid': {
       const invoice = event.data.object as Stripe.Invoice;
-      const userId = decisionUserId ?? await resolveUserIdFromCustomer(trx, stripe, invoice.customer);
+      const userId = await resolveUserIdFromCustomer(trx, stripe, invoice.customer);
       if (!userId) return null;
       // `charge` was moved off the Invoice type in recent SDK versions, but the
       // webhook payload still carries it on older API versions and is useful
@@ -967,17 +893,10 @@ async function mapStripeEvent(
     }
     case 'charge.refunded': {
       const charge = event.data.object as Stripe.Charge;
-      let userId = decisionUserId ?? await resolveUserIdFromCustomer(trx, stripe, charge.customer);
-      const rawInvoice = (charge as unknown as { invoice?: string | { id: string } | null }).invoice;
-      let invoiceId = typeof rawInvoice === 'string' ? rawInvoice : rawInvoice?.id ?? null;
-      if (!invoiceId) {
-        const intentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent?.id;
-        const purchase = intentId && await trx<EventRow>(TABLES.Event)
-          .whereRaw(`"metadata"->>'stripePaymentIntentId' = ?`, [intentId]).where({ type: 'invoice_paid' }).first();
-        if (purchase) { invoiceId = intentId; userId = purchase.userId; }
-        else if (decisionUserId && intentId) invoiceId = intentId;
-      }
+      const userId = await resolveUserIdFromCustomer(trx, stripe, charge.customer);
       if (!userId) return null;
+      const rawInvoice = (charge as unknown as { invoice?: string | { id: string } | null }).invoice;
+      const invoiceId = typeof rawInvoice === 'string' ? rawInvoice : rawInvoice?.id ?? null;
 
       // Stopgap for partial-refund over-clawback: the old path reversed 100%
       // of an invoice's commissions on ANY refund, and charge.amount_refunded
@@ -1236,7 +1155,6 @@ async function maybeRedeemStripeCoupons(
   stripe: Stripe,
   event: Stripe.Event,
   tenantId: string,
-  attributionUserId?: string,
 ): Promise<string[]> {
   const obj = event.data.object as unknown as Record<string, unknown>;
   const ts = new Date(event.created * 1000);
@@ -1245,7 +1163,7 @@ async function maybeRedeemStripeCoupons(
   const customerRaw =
     (obj.customer as string | { id: string } | null | undefined) ??
     (obj.customer_email as string | undefined);
-  const userId = attributionUserId ?? (typeof customerRaw === 'string' ? customerRaw : customerRaw?.id);
+  const userId = typeof customerRaw === 'string' ? customerRaw : customerRaw?.id;
   if (!userId) return [];
 
   // Collect candidate codes from wherever Stripe might surface them.
