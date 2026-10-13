@@ -123,8 +123,36 @@ describe.skipIf(skipIntegration)('api integration', () => {
       expect((await request(app).delete(`/partners/${owner}/coupons/${couponId}`).set('Cookie', cookie)).body.error).toBe('partner_customization_disabled');
       await db(TABLES.Program).where({ id: programId }).update({ partnersMayCustomizeCode: true });
       expect((await request(app).delete(`/partners/${owner}/coupons/${couponId}`).set('Cookie', cookie)).status).toBe(200);
-      expect((await post(owner, 'REPLACEMENT')).status).toBe(201);
+      const replacement = await post(owner, 'REPLACEMENT');
+      expect(replacement.status).toBe(201);
       expect((await request(app).post('/coupons/redeem').set('Cookie', cookie).send({})).status).toBe(403);
+
+      // Create/deactivate churn is capped per 24h (each mint can create
+      // Stripe objects on self-host). Six created so far; four more cycles
+      // reach the cap of ten, then the next create is refused.
+      let latest = replacement.body.id as string;
+      for (let index = 0; index < 4; index++) {
+        expect((await request(app).delete(`/partners/${owner}/coupons/${latest}`).set('Cookie', cookie)).status).toBe(200);
+        const churn = await post(owner, `CHURN${index}`);
+        expect(churn.status).toBe(201);
+        latest = churn.body.id as string;
+      }
+      expect((await request(app).delete(`/partners/${owner}/coupons/${latest}`).set('Cookie', cookie)).status).toBe(200);
+      const capped = await post(owner, 'ONEMORE');
+      expect(capped.status).toBe(429);
+      expect(capped.body.error).toBe('daily_code_limit_reached');
+
+      // The brand-wide verification gate runs after the access checks and
+      // gives partners a partner-facing message, not the brand's coupon
+      // count or integration instructions.
+      await db(TABLES.Tenant).where({ id: DEFAULT_TENANT_ID }).update({ couponIntegrationVerifiedAt: null });
+      expect((await post(other, 'NOTMINE')).status).toBe(403);
+      await db(TABLES.Coupon).where({ partnerId: owner }).update({ createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) });
+      const gated = await post(owner, 'GATED');
+      expect(gated.status).toBe(409);
+      expect(gated.body.error).toBe('verification_required');
+      expect(gated.body.existing).toBeUndefined();
+      expect(gated.body.detail).not.toMatch(/coupons\/redeem|webhook/);
     } finally {
       await db(TABLES.Session).where({ id: session.id }).del();
       await db(TABLES.Tenant).where({ id: DEFAULT_TENANT_ID }).update({ couponIntegrationVerifiedAt: oldTenant?.couponIntegrationVerifiedAt ?? null });
