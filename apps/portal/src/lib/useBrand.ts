@@ -68,7 +68,6 @@ export function useBrand(): Brand {
 
 /** Shape of the public `GET /branding` bootstrap (no auth). */
 export interface PublicBranding {
-  partnerNetworkVisible?: boolean;
   /** Slug of the tenant resolved for the request — on a prefix-less call
    *  it's non-null only when the HOST resolved it (custom domain), or
    *  'default' on single-tenant installs. */
@@ -113,7 +112,9 @@ export function usePublicBrand(): Brand & {
     faviconUrl: data?.faviconUrl ?? null,
     supportEmail: data?.supportEmail || null,
     whiteLabel: data?.whiteLabel ?? false,
-    partnerNetworkVisible: data?.partnerNetworkVisible ?? true,
+    // The public /branding bootstrap doesn't carry this; pages that gate on
+    // it read the authenticated useBrand() instead.
+    partnerNetworkVisible: true,
     brandColor: data?.brandColor ?? null,
     tenantSlug: data?.tenantSlug ?? null,
     approvalStatus: data?.approvalStatus ?? null,

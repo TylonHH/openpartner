@@ -80,6 +80,29 @@ describe.skipIf(skipIntegration)('api integration', () => {
     expect(other.body.partnerNetworkVisible).toBe(false);
     const invalid = await request(app).post('/config/program').set('Authorization', `Bearer ${ADMIN_KEY}`).send({ partnerNetworkVisible: 'false' });
     expect(invalid.status).toBe(400);
+    expect(other.body.partnerNetworkToggleAvailable).toBe(true);
+  });
+  it('the hosted (multi-tenant) platform ignores the partner Network toggle', async () => {
+    // The stored value from a self-host era (or a direct API call) must not
+    // hide Network discovery from a hosted brand's partners.
+    const tenantId = ulid();
+    const slug = `hosted${tenantId.slice(-8).toLowerCase()}`;
+    await db(TABLES.Tenant).insert({ id: tenantId, slug, displayName: 'Hosted Brand', status: 'active', approvalStatus: 'approved' });
+    await db(TABLES.Config).insert({ tenantId, key: 'program_settings', value: { partnerNetworkVisible: false } as never, updatedAt: new Date() });
+    process.env.OPENPARTNER_TENANCY = 'multi';
+    try {
+      const read = await request(app).get(`/t/${slug}/config/program`).set('Authorization', `Bearer ${ADMIN_KEY}`);
+      expect(read.status).toBe(200);
+      expect(read.body.partnerNetworkVisible).toBe(true);
+      expect(read.body.partnerNetworkToggleAvailable).toBe(false);
+      const save = await request(app).post(`/t/${slug}/config/program`).set('Authorization', `Bearer ${ADMIN_KEY}`).send({ partnerNetworkVisible: false });
+      expect(save.status).toBe(200);
+      expect(save.body.partnerNetworkVisible).toBe(true);
+    } finally {
+      process.env.OPENPARTNER_TENANCY = 'single';
+      await db(TABLES.Config).where({ tenantId }).del();
+      await db(TABLES.Tenant).where({ id: tenantId }).del();
+    }
   });
   it('full funnel: partner → link → click → identify → event → attribution → payout', async () => {
     // 1. Admin creates a partner.

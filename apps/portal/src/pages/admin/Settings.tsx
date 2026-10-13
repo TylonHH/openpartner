@@ -16,6 +16,8 @@ interface PayoutSettings {
 
 interface ProgramSettings {
   partnerNetworkVisible: boolean;
+  /** False on the hosted platform, where the toggle doesn't apply. */
+  partnerNetworkToggleAvailable?: boolean;
   programName: string | null;
   supportEmail: string | null;
   logoUrl: string | null;
@@ -274,13 +276,16 @@ function ProgramSection() {
           <Hint>Linked from the partner portal footer. Blank = no terms link shown.</Hint>
         </div>
       </div>
-      <div style={{ marginBottom: 16 }}>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input type="checkbox" checked={partnerNetworkVisible} onChange={(e) => setPartnerNetworkVisible(e.target.checked)} />
-          Show Network in the partner portal
-        </label>
-        <Hint>Controls partner navigation and portal pages. Your brand's Network connection and admin access remain available.</Hint>
-      </div>
+      {/* Self-host only, and moot for white-label (already hidden). */}
+      {data?.partnerNetworkToggleAvailable && !data.whiteLabel && (
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={partnerNetworkVisible} onChange={(e) => setPartnerNetworkVisible(e.target.checked)} />
+            Show Network in the partner portal
+          </label>
+          <Hint>Controls partner navigation and portal pages. Your brand's Network connection and admin access remain available.</Hint>
+        </div>
+      )}
       <Row>
         <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
           {mut.isPending ? 'Saving…' : 'Save program info'}
