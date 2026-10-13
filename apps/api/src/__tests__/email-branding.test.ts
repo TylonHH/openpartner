@@ -65,6 +65,14 @@ describe('email branding', () => {
     expect(brandEmailHtml(custom, '#123456')).toBe(custom);
   });
 
+  it('only rewrites the marker inside our own tags, not text that contains it', () => {
+    // e.g. a partner named `data-op-email="card" style="x"`, HTML-escaped into the body.
+    const html = templates.partnerInviteEmail('data-op-email="card" style="x"', url).html;
+    const branded = brandEmailHtml(html, '#123456');
+    expect(branded).toContain('data-op-email="card" style="x"');
+    expect(branded).toContain('border-top:4px solid #123456');
+  });
+
   it.each(['smtp', 'postmark'] as const)('uses fresh tenant colors on %s sends, including text-only messages', async (kind) => {
     const sendMail = vi.fn().mockResolvedValue({});
     vi.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as unknown as ReturnType<typeof nodemailer.createTransport>);
@@ -90,5 +98,22 @@ describe('email branding', () => {
     expect(delivered[1]).toContain('Plain &lt;text&gt;');
     expect(db).toHaveBeenCalledWith(TABLES.Tenant);
     expect(where).toHaveBeenCalledWith({ id: 'tenant-a' });
+  });
+
+  it('never brands platform-voice mail, whatever tenant the send runs under', async () => {
+    const sendMail = vi.fn().mockResolvedValue({});
+    vi.mocked(nodemailer.createTransport).mockReturnValue({ sendMail } as unknown as ReturnType<typeof nodemailer.createTransport>);
+    vi.mocked(resolveMailConfig).mockResolvedValue({
+      source: 'ui', kind: 'smtp', from: 'sender@example.test',
+      smtp: { host: 'localhost', port: 1025, secure: false, user: null, password: null },
+      postmark: { serverToken: 'dummy', messageStream: 'outbound' },
+    });
+    const first = vi.fn(async () => ({ brandColor: '#123456' }));
+    const db = vi.fn(() => ({ where: vi.fn(() => ({ first })) })) as unknown as Knex;
+    await getMailer().send({ db, tenantId: 'tenant-a' }, { to: 'recipient@example.test', ...messages[3]!, platform: true });
+    const html = sendMail.mock.calls[0]![0].html as string;
+    expect(html).not.toContain('#123456');
+    expect(html).toContain('background:#2dd4bf');
+    expect(first).not.toHaveBeenCalled();
   });
 });

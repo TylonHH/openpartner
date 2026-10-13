@@ -38,6 +38,10 @@ export interface Message {
   html?: string;
   tag?: string;
   metadata?: Record<string, unknown>;
+  /** Platform-voice mail (ops alerts, platform sign-in): OpenPartner talking,
+   *  not a brand, so it is never painted in a tenant's brand color — even
+   *  when the send context is some brand's tenant. */
+  platform?: boolean;
 }
 
 export interface SendContext {
@@ -68,10 +72,10 @@ function extractAddress(from: string): string {
 class RoutingMailer implements Mailer {
   async send(ctx: SendContext, msg: Message): Promise<void> {
     const cfg = await resolveMailConfig(ctx.db, ctx.tenantId);
-    const tenant = await ctx.db<TenantRow>(TABLES.Tenant)
-      .where({ id: ctx.tenantId })
-      .first(['brandColor']);
-    const html = brandEmailHtml(msg.html ?? plainHtml(msg.text), tenant?.brandColor ?? null);
+    const brandColor = msg.platform
+      ? null
+      : ((await ctx.db<TenantRow>(TABLES.Tenant).where({ id: ctx.tenantId }).first(['brandColor']))?.brandColor ?? null);
+    const html = brandEmailHtml(msg.html ?? plainHtml(msg.text), brandColor);
 
     // Brand-aware From + Reply-To when we're using the platform fallback
     // (source='env'). Pattern: `"Acme via OpenPartner" <noreply@openpartner.dev>`,

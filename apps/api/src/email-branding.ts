@@ -16,10 +16,15 @@ export function brandEmailHtml(html: string, brandColor: string | null): string 
   let linkRgb = rgb;
   while (luminance(linkRgb) > 0.183) linkRgb = linkRgb.map((c) => Math.floor(c * 0.9));
   const link = `#${linkRgb.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
-  return html.replace(/data-op-email="(card|link|button)" style="([^"]*)"/g, (_match, part: string, style: string) => {
-    const branded = part === 'card' ? `${style} border-top:4px solid ${accent};`
-      : part === 'link' ? style.replace('color:#2dd4bf', `color:${link}`)
-      : style.replace('background:#2dd4bf', `background:${accent}`).replace('color:#041115', `color:${ink}`);
-    return `style="${branded}"`;
-  });
+  // Anchored to our own <table>/<a> tags so text that merely contains the
+  // marker (an escaped partner or brand name) is never rewritten.
+  return html.replace(
+    /(<(?:table|a)\b[^<>]*?)data-op-email="(card|link|button)" style="([^"]*)"/g,
+    (_match, tagStart: string, part: string, style: string) => {
+      const branded = part === 'card' ? `${style} border-top:4px solid ${accent};`
+        : part === 'link' ? style.replace('color:#2dd4bf', `color:${link}`)
+        : style.replace('background:#2dd4bf', `background:${accent}`).replace('color:#041115', `color:${ink}`);
+      return `${tagStart}style="${branded}"`;
+    },
+  );
 }
