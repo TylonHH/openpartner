@@ -43,13 +43,15 @@ describe('partner-visible discount terms', () => {
     fireEvent.change(page.getByRole('combobox'), { target: { value: 'pr1' } });
     expect(page.getByText(`Customer discount: ${summary}`)).toBeTruthy();
     expect(page.getByText(`Current program discount: ${summary}`)).toBeTruthy();
-    expect(page.getByText('Created in Stripe')).toBeTruthy();
+    expect(page.getByText('Discount applies automatically at checkout')).toBeTruthy();
     expect(page.getByText(/Existing codes may retain earlier terms/)).toBeTruthy();
     expect(page.getByText(/Discount duration does not indicate a code's expiry or redemption limit/)).toBeTruthy();
   });
   it('does not promise missing Stripe provisioning or unknown discount terms', () => {
     const page = show(true);
-    expect(page.getByText('Stripe creation not recorded')).toBeTruthy();
+    // No Stripe promotion recorded (always the case on hosted): say nothing
+    // rather than an alarming "not recorded".
+    expect(page.queryByText(/Stripe|applies automatically/)).toBeNull();
     expect(page.getByText('Current program discount: Discount details unavailable')).toBeTruthy();
   });
 });

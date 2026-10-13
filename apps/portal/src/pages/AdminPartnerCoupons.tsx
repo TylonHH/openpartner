@@ -121,7 +121,9 @@ export function AdminPartnerCoupons({ ownPartnerId }: { ownPartnerId?: string } 
         </div>
       )}
       <Card>
-        <p style={{ color: theme.textMuted, fontSize: 13 }}>Your brand controls discount terms. Existing codes may retain earlier terms when a program changes. Discount duration does not indicate a code's expiry or redemption limit.</p>
+        {selfService && (
+          <p style={{ color: theme.textMuted, fontSize: 13 }}>Your brand controls discount terms. Existing codes may retain earlier terms when a program changes. Discount duration does not indicate a code's expiry or redemption limit.</p>
+        )}
         {coupons.isLoading ? (
           <p style={{ color: theme.textMuted, fontSize: 13 }}>Loading…</p>
         ) : (
@@ -150,7 +152,14 @@ export function AdminPartnerCoupons({ ownPartnerId }: { ownPartnerId?: string } 
                       <div style={{ color: theme.textMuted, fontSize: 12 }}>
                         <div>{campaignNameById.get(c.programId) ?? c.programId}</div>
                         <div>Current program discount: {customerDiscount(campaigns.data?.programs.find((program) => program.id === c.programId)?.customerReward)}</div>
-                        <div>{c.deactivatedAt ? 'Code deactivated' : c.stripePromotionCodeId ? 'Created in Stripe' : 'Stripe creation not recorded'}</div>
+                        {/* Only say something when it's true and useful: hosted
+                            brands' rewards never live in our Stripe, and a
+                            program without a reward has nothing to create. */}
+                        {c.deactivatedAt ? (
+                          <div>Code deactivated</div>
+                        ) : c.stripePromotionCodeId ? (
+                          <div>Discount applies automatically at checkout</div>
+                        ) : null}
                       </div>
                       <span style={{ color: theme.textMuted, fontSize: 11, whiteSpace: 'nowrap' }}>
                         {(c.redemptions90d ?? 0) > 0
